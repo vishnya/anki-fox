@@ -32,6 +32,15 @@
     </div>
   </div>
 
+  <!-- Topic focus -->
+  <div class="field">
+    <label for="custom-prompt">Topic focus <span class="label-note">(optional — default prompt is already effective)</span></label>
+    <textarea id="custom-prompt" placeholder="Add specifics to steer the cards, e.g. &quot;Prioritise clinical applications over mechanisms&quot; or &quot;Focus on molecular biology terminology.&quot;"></textarea>
+    <div class="prompt-saved hidden" id="prompt-saved">
+      Saved for <span id="prompt-saved-deck"></span> · <button type="button" id="btn-clear-prompt">clear</button>
+    </div>
+  </div>
+
   <!-- Model provider + name -->
   <div class="field-row">
     <div class="field">
@@ -60,15 +69,6 @@
   <div class="field hidden" id="field-base-url">
     <label for="base-url">Base URL</label>
     <input type="url" id="base-url" placeholder="http://localhost:11434/v1" autocomplete="off" spellcheck="false">
-  </div>
-
-  <!-- Topic focus -->
-  <div class="field">
-    <label for="custom-prompt">Topic focus <span class="label-note">(optional — default prompt is already effective)</span></label>
-    <textarea id="custom-prompt" placeholder="Add specifics to steer the cards, e.g. &quot;Prioritise clinical applications over mechanisms&quot; or &quot;Focus on molecular biology terminology.&quot;"></textarea>
-    <div class="prompt-saved hidden" id="prompt-saved">
-      Saved for <span id="prompt-saved-deck"></span> · <button type="button" id="btn-clear-prompt">clear</button>
-    </div>
   </div>
 
   <!-- Session button -->
