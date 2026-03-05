@@ -20,7 +20,7 @@ class TestBuildPrompt:
 
     def test_custom_prompt_in_header_block(self):
         prompt = models._build_prompt({"custom_prompt": "Focus on cells"})
-        assert "IMPORTANT — USER INSTRUCTION (follow this exactly):" in prompt
+        assert "IMPORTANT — USER INSTRUCTION (this overrides any conflicting rules below):" in prompt
         assert "Focus on cells" in prompt
 
     def test_custom_prompt_reinforced_in_selfcheck(self):
@@ -36,8 +36,9 @@ class TestBuildPrompt:
         assert prompt == models.PROMPT_TEMPLATE
 
 
-class TestRhymeAdherence:
-    """Lightweight integration test: verify the model follows a rhyming prompt."""
+class TestPromptAdherence:
+    """Integration tests: verify the full pipeline (screenshot → prompt → cards)
+    actually follows the user's custom prompt. Uses a second LLM call as judge."""
 
     @pytest.fixture
     def text_png(self, tmp_path):
@@ -53,92 +54,70 @@ class TestRhymeAdherence:
         return str(path)
 
     @pytest.fixture
-    def rhyme_config(self):
-        return {
-            "model": {"provider": "anthropic", "model_name": "claude-haiku-4-5"},
-            "api_keys": {"anthropic": ""},
-            "custom_prompt": "Write the back of every card as a rhyming couplet.",
-        }
-
-    @pytest.mark.integration
-    def test_rhyming_prompt_produces_rhymes(self, text_png, rhyme_config):
-        """Generate cards with a rhyming instruction, then use a second LLM
-        call to judge whether the backs actually rhyme."""
-        import anthropic
-
-        api_key = os.environ.get("ANTHROPIC_API_KEY", "")
-        if not api_key:
+    def api_key(self):
+        key = os.environ.get("ANTHROPIC_API_KEY", "")
+        if not key:
             pytest.skip("ANTHROPIC_API_KEY not set")
-        rhyme_config["api_keys"]["anthropic"] = api_key
+        return key
 
-        cards = models.generate_cards(text_png, rhyme_config)
-        assert len(cards) >= 1, "Should generate at least one card"
-
-        # Ask a second model to judge rhyming
-        backs = "\n---\n".join(
-            f"Card {i+1} back:\n{c['back']}" for i, c in enumerate(cards)
-        )
-        client = anthropic.Anthropic(api_key=api_key)
-        judge = client.messages.create(
-            model="claude-haiku-4-5",
-            max_tokens=200,
-            messages=[{
-                "role": "user",
-                "content": (
-                    "You are a rhyme judge. The user asked for flashcard backs "
-                    "written as rhyming couplets. Below are the card backs produced. "
-                    "Does at least one card back contain a rhyming couplet "
-                    "(two lines whose ending words rhyme)?\n\n"
-                    f"{backs}\n\n"
-                    "Reply with ONLY 'yes' or 'no'."
-                ),
-            }],
-        )
-        verdict = judge.content[0].text.strip().lower()
-        assert verdict.startswith("yes"), (
-            f"Rhyme judge said '{verdict}'. "
-            f"Card backs: {[c['back'] for c in cards]}"
-        )
-
-    @pytest.mark.integration
-    def test_no_rhyme_prompt_does_not_rhyme(self, text_png):
-        """Generate cards WITHOUT a rhyming instruction and verify the judge
-        says they do NOT rhyme — confirms the judge isn't just saying yes."""
-        import anthropic
-
-        api_key = os.environ.get("ANTHROPIC_API_KEY", "")
-        if not api_key:
-            pytest.skip("ANTHROPIC_API_KEY not set")
-
-        plain_config = {
+    def _generate(self, image_path, api_key, custom_prompt):
+        """Run the real generate_cards pipeline with the given custom prompt."""
+        config = {
             "model": {"provider": "anthropic", "model_name": "claude-haiku-4-5"},
             "api_keys": {"anthropic": api_key},
-            "custom_prompt": "",
+            "custom_prompt": custom_prompt,
         }
-        cards = models.generate_cards(text_png, plain_config)
-        assert len(cards) >= 1
+        return models.generate_cards(image_path, config)
 
-        backs = "\n---\n".join(
-            f"Card {i+1} back:\n{c['back']}" for i, c in enumerate(cards)
+    def _judge(self, cards, criterion, api_key):
+        """Ask a second LLM whether the cards meet the given criterion.
+        Returns 'yes' or 'no'."""
+        import anthropic
+
+        formatted = "\n---\n".join(
+            f"Card {i+1}:\n  Front: {c['front']}\n  Back: {c['back']}"
+            for i, c in enumerate(cards)
         )
         client = anthropic.Anthropic(api_key=api_key)
-        judge = client.messages.create(
+        resp = client.messages.create(
             model="claude-haiku-4-5",
-            max_tokens=200,
+            max_tokens=50,
             messages=[{
                 "role": "user",
                 "content": (
-                    "You are a rhyme judge. The user asked for flashcard backs "
-                    "written as rhyming couplets. Below are the card backs produced. "
-                    "Does at least one card back contain a rhyming couplet "
-                    "(two lines whose ending words rhyme)?\n\n"
-                    f"{backs}\n\n"
-                    "Reply with ONLY 'yes' or 'no'."
+                    f"You are judging flashcard output. The user's instruction was:\n"
+                    f"\"{criterion}\"\n\n"
+                    f"Here are the cards produced:\n{formatted}\n\n"
+                    f"Do the cards follow the user's instruction? "
+                    f"Reply with ONLY 'yes' or 'no'."
                 ),
             }],
         )
-        verdict = judge.content[0].text.strip().lower()
+        return resp.content[0].text.strip().lower()
+
+    @pytest.mark.integration
+    def test_rhyme_prompt_followed(self, text_png, api_key):
+        """A casual 'rhyme everything' prompt — the kind a real user types —
+        should produce cards whose backs actually rhyme."""
+        prompt = "Rhyme everything you see here"
+        cards = self._generate(text_png, api_key, prompt)
+        assert len(cards) >= 1
+
+        verdict = self._judge(cards, prompt, api_key)
+        assert verdict.startswith("yes"), (
+            f"Judge said '{verdict}' for prompt '{prompt}'. "
+            f"Cards: {[(c['front'], c['back']) for c in cards]}"
+        )
+
+    @pytest.mark.integration
+    def test_no_rhyme_prompt_not_rhyming(self, text_png, api_key):
+        """Without a rhyming prompt, the judge should say cards do NOT rhyme.
+        This proves the judge actually discriminates."""
+        cards = self._generate(text_png, api_key, "")
+        assert len(cards) >= 1
+
+        verdict = self._judge(cards, "Rhyme everything you see here", api_key)
         assert verdict.startswith("no"), (
-            f"Expected judge to say 'no' for plain cards, but got '{verdict}'. "
-            f"Card backs: {[c['back'] for c in cards]}"
+            f"Expected 'no' for plain cards, got '{verdict}'. "
+            f"Cards: {[(c['front'], c['back']) for c in cards]}"
         )

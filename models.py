@@ -88,7 +88,13 @@ def _build_prompt(config: dict) -> str:
         return PROMPT_TEMPLATE
     # Place the user instruction at the top (before RULES) for maximum weight,
     # and reinforce it in the SELF-CHECK so the model verifies compliance.
-    header = f"IMPORTANT — USER INSTRUCTION (follow this exactly):\n{custom}\n\n"
+    header = (
+        f"IMPORTANT — USER INSTRUCTION (this overrides any conflicting rules below):\n"
+        f"{custom}\n"
+        f"If this instruction specifies a style, tone, or format, use it even if it "
+        f"conflicts with the default rules (e.g. if the user says to rhyme, write "
+        f"rhyming cards even though the default rules say 'plain english').\n\n"
+    )
     check_extra = f" Also verify each card follows the user instruction: \"{custom}\""
     prompt = PROMPT_TEMPLATE.replace("RULES:", header + "RULES:", 1)
     prompt = prompt.replace(
