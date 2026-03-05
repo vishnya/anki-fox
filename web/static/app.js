@@ -1,10 +1,25 @@
 // ── Constants ──────────────────────────────────────────────────────────────────
 const MODEL_DEFAULTS = {
-  anthropic:         { name: "claude-sonnet-4-6",        apiKeyLabel: "Anthropic API Key",  hasKey: true,  hasUrl: false },
-  openai:            { name: "gpt-4o",                   apiKeyLabel: "OpenAI API Key",     hasKey: true,  hasUrl: false },
-  groq:              { name: "llama-3.3-70b-versatile",  apiKeyLabel: "Groq API Key",       hasKey: true,  hasUrl: false },
-  gemini:            { name: "gemini-2.0-flash",         apiKeyLabel: "Gemini API Key",     hasKey: true,  hasUrl: false },
-  custom:            { name: "minicpm-v",                 apiKeyLabel: "",                   hasKey: false, hasUrl: true  },
+  anthropic: {
+    label: "Claude", apiKeyLabel: "Anthropic API Key", hasKey: true, hasUrl: false,
+    models: ["claude-sonnet-4-6", "claude-opus-4-6", "claude-haiku-4-5", "claude-sonnet-4-5"],
+  },
+  openai: {
+    label: "GPT", apiKeyLabel: "OpenAI API Key", hasKey: true, hasUrl: false,
+    models: ["gpt-4o", "gpt-4o-mini", "o3-mini", "gpt-4-turbo"],
+  },
+  groq: {
+    label: "Groq", apiKeyLabel: "Groq API Key", hasKey: true, hasUrl: false,
+    models: ["llama-3.3-70b-versatile", "mixtral-8x7b-32768"],
+  },
+  gemini: {
+    label: "Gemini", apiKeyLabel: "Gemini API Key", hasKey: true, hasUrl: false,
+    models: ["gemini-2.0-flash", "gemini-2.0-pro", "gemini-1.5-pro", "gemini-2.5-pro-exp"],
+  },
+  custom: {
+    label: "Custom", apiKeyLabel: "", hasKey: false, hasUrl: true,
+    models: [],
+  },
 };
 
 // ── DOM refs ───────────────────────────────────────────────────────────────────
@@ -15,13 +30,17 @@ const btnRetryDecks   = document.getElementById("btn-retry-decks");
 const deckNewRow      = document.getElementById("deck-new-row");
 const deckNewInput    = document.getElementById("deck-new-input");
 const btnCancelDeck   = document.getElementById("btn-cancel-deck");
-const providerSelect  = document.getElementById("provider");
-const modelNameInput  = document.getElementById("model-name");
-const apiKeyField     = document.getElementById("field-api-key");
-const apiKeyInput     = document.getElementById("api-key");
-const apiKeyLabel     = document.getElementById("api-key-label");
-const baseUrlField    = document.getElementById("field-base-url");
-const baseUrlInput    = document.getElementById("base-url");
+const providerSelect    = document.getElementById("provider");
+const modelNameSelect   = document.getElementById("model-name");
+const modelCustomField  = document.getElementById("field-model-custom");
+const modelCustomInput  = document.getElementById("model-name-custom");
+const modelSelectField  = document.getElementById("field-model-select");
+const modelSummaryText  = document.getElementById("model-summary-text");
+const apiKeyField       = document.getElementById("field-api-key");
+const apiKeyInput       = document.getElementById("api-key");
+const apiKeyLabel       = document.getElementById("api-key-label");
+const baseUrlField      = document.getElementById("field-base-url");
+const baseUrlInput      = document.getElementById("base-url");
 const promptInput     = document.getElementById("custom-prompt");
 const promptSaved     = document.getElementById("prompt-saved");
 const promptSavedDeck = document.getElementById("prompt-saved-deck");
@@ -51,15 +70,14 @@ async function loadConfig() {
   config     = await res.json();
   sessionActive = config.session_active;
 
-  providerSelect.value = config.model?.provider || "anthropic";
-  modelNameInput.value = config.model?.model_name || "";
+  const provider = config.model?.provider || "anthropic";
+  providerSelect.value = provider;
   baseUrlInput.value   = config.model?.base_url   || "";
   promptInput.value    = config.custom_prompt || "";
-
-  const provider = config.model?.provider || "anthropic";
-  apiKeyInput.value = config.api_keys?.[provider] || "";
+  apiKeyInput.value    = config.api_keys?.[provider] || "";
 
   updateProviderUI(provider, false);
+  setModelValue(config.model?.model_name || "");
   updatePromptSavedIndicator(config.deck);
   updateSessionUI();
 }
@@ -131,7 +149,7 @@ async function saveConfig() {
     deck,
     model: {
       provider,
-      model_name: modelNameInput.value.trim(),
+      model_name: getModelName(),
       base_url:   provider === "custom" ? baseUrlInput.value.trim() : null,
     },
     api_keys:      { ...(config?.api_keys || {}), [provider]: apiKeyInput.value.trim() },
@@ -140,11 +158,14 @@ async function saveConfig() {
   };
   await fetch("/api/config", { method: "POST", body: JSON.stringify(body), headers: { "Content-Type": "application/json" } });
   config = { ...config, ...body };
+  updateModelSummary();
 }
 
-[apiKeyInput, baseUrlInput, modelNameInput].forEach(el => {
+[apiKeyInput, baseUrlInput, modelCustomInput].forEach(el => {
   el.addEventListener("blur", saveConfig);
 });
+
+modelNameSelect.addEventListener("change", saveConfig);
 
 // Prompt gets its own blur handler so it can update the saved indicator
 promptInput.addEventListener("blur", async () => {
@@ -153,11 +174,57 @@ promptInput.addEventListener("blur", async () => {
 });
 
 // ── Provider UI ────────────────────────────────────────────────────────────────
+function getModelName() {
+  const provider = providerSelect.value;
+  if (provider === "custom") return modelCustomInput.value.trim();
+  return modelNameSelect.value;
+}
+
+function setModelValue(name) {
+  const provider = providerSelect.value;
+  if (provider === "custom") {
+    modelCustomInput.value = name;
+  } else {
+    // If saved model is in the list, select it; otherwise pick first
+    if ([...modelNameSelect.options].some(o => o.value === name)) {
+      modelNameSelect.value = name;
+    }
+  }
+  updateModelSummary();
+}
+
+function updateModelSummary() {
+  const meta = MODEL_DEFAULTS[providerSelect.value] || MODEL_DEFAULTS.anthropic;
+  modelSummaryText.textContent = `${meta.label} ${getModelName()}`;
+}
+
+function populateModelDropdown(provider) {
+  const meta = MODEL_DEFAULTS[provider] || MODEL_DEFAULTS.anthropic;
+  modelNameSelect.innerHTML = "";
+  meta.models.forEach(m => {
+    const opt = document.createElement("option");
+    opt.value = m;
+    opt.textContent = m;
+    modelNameSelect.appendChild(opt);
+  });
+}
+
 function updateProviderUI(provider, resetName) {
   const meta = MODEL_DEFAULTS[provider] || MODEL_DEFAULTS.anthropic;
 
+  // Model dropdown vs free text
+  if (provider === "custom") {
+    modelSelectField.classList.add("hidden");
+    modelCustomField.classList.remove("hidden");
+    if (resetName) modelCustomInput.value = "minicpm-v";
+  } else {
+    modelSelectField.classList.remove("hidden");
+    modelCustomField.classList.add("hidden");
+    populateModelDropdown(provider);
+    if (resetName) modelNameSelect.value = meta.models[0];
+  }
+
   if (resetName) {
-    modelNameInput.value = meta.name;
     apiKeyInput.value = config?.api_keys?.[provider] || "";
   }
 
@@ -170,11 +237,11 @@ function updateProviderUI(provider, resetName) {
 
   if (meta.hasUrl) {
     baseUrlField.classList.remove("hidden");
-    modelNameInput.placeholder = "minicpm-v, qwen2.5-vl, llava:13b";
   } else {
     baseUrlField.classList.add("hidden");
-    modelNameInput.placeholder = "model name";
   }
+
+  updateModelSummary();
 }
 
 providerSelect.addEventListener("change", () => {
@@ -281,7 +348,7 @@ function updateSessionUI() {
 }
 
 function setFormDisabled(disabled) {
-  [deckSelect, providerSelect, modelNameInput, apiKeyInput, baseUrlInput, promptInput, btnNewDeck]
+  [deckSelect, providerSelect, modelNameSelect, modelCustomInput, apiKeyInput, baseUrlInput, promptInput, btnNewDeck]
     .forEach(el => { el.disabled = disabled; });
 }
 
@@ -303,7 +370,7 @@ startBtn.addEventListener("click", async () => {
     deck,
     model: {
       provider,
-      model_name: modelNameInput.value.trim(),
+      model_name: getModelName(),
       base_url:   provider === "custom" ? baseUrlInput.value.trim() : null,
     },
     api_keys:      { ...(config?.api_keys || {}), [provider]: apiKeyInput.value.trim() },

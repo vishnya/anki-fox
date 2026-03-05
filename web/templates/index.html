@@ -41,35 +41,38 @@
     </div>
   </div>
 
-  <!-- Model provider + name -->
-  <div class="field-row">
-    <div class="field">
-      <label for="provider">Provider</label>
-      <select id="provider">
-        <option value="anthropic">Claude (Anthropic)</option>
-        <option value="openai">GPT (OpenAI)</option>
-        <option value="groq">Groq</option>
-        <option value="gemini">Gemini (Google)</option>
-        <option value="custom">Custom endpoint (Ollama, LM Studio, …)</option>
-      </select>
+  <!-- Model settings (collapsible) -->
+  <details class="model-details" id="model-details">
+    <summary id="model-summary">Model: <span id="model-summary-text">Claude claude-sonnet-4-6</span></summary>
+    <div class="model-inner">
+      <div class="field">
+        <label for="provider">Provider</label>
+        <select id="provider">
+          <option value="anthropic">Claude (Anthropic)</option>
+          <option value="openai">GPT (OpenAI)</option>
+          <option value="groq">Groq</option>
+          <option value="gemini">Gemini (Google)</option>
+          <option value="custom">Custom endpoint (Ollama, LM Studio, …)</option>
+        </select>
+      </div>
+      <div class="field" id="field-model-select">
+        <label for="model-name">Model</label>
+        <select id="model-name"></select>
+      </div>
+      <div class="field hidden" id="field-model-custom">
+        <label for="model-name-custom">Model name</label>
+        <input type="text" id="model-name-custom" placeholder="minicpm-v, qwen2.5-vl, llava:13b" autocomplete="off" spellcheck="false">
+      </div>
+      <div class="field" id="field-api-key">
+        <label for="api-key" id="api-key-label">API Key</label>
+        <input type="password" id="api-key" placeholder="sk-..." autocomplete="off">
+      </div>
+      <div class="field hidden" id="field-base-url">
+        <label for="base-url">Base URL</label>
+        <input type="url" id="base-url" placeholder="http://localhost:11434/v1" autocomplete="off" spellcheck="false">
+      </div>
     </div>
-    <div class="field">
-      <label for="model-name">Model name</label>
-      <input type="text" id="model-name" placeholder="model name" autocomplete="off" spellcheck="false">
-    </div>
-  </div>
-
-  <!-- API key (hidden for custom) -->
-  <div class="field" id="field-api-key">
-    <label for="api-key" id="api-key-label">API Key</label>
-    <input type="password" id="api-key" placeholder="sk-..." autocomplete="off">
-  </div>
-
-  <!-- Base URL (only for custom) -->
-  <div class="field hidden" id="field-base-url">
-    <label for="base-url">Base URL</label>
-    <input type="url" id="base-url" placeholder="http://localhost:11434/v1" autocomplete="off" spellcheck="false">
-  </div>
+  </details>
 
   <!-- Session button -->
   <button class="btn-primary" id="btn-start">Start Session</button>

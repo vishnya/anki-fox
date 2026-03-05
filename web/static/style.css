@@ -125,6 +125,47 @@ textarea {
 
 .hidden { display: none !important; }
 
+/* ── Model details ── */
+.model-details {
+  margin-bottom: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0;
+}
+
+.model-details summary {
+  padding: 10px 12px;
+  font-size: 13px;
+  color: var(--muted);
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.model-details summary::-webkit-details-marker { display: none; }
+
+.model-details summary::before {
+  content: "▸";
+  font-size: 11px;
+  transition: transform 0.15s;
+}
+
+.model-details[open] summary::before {
+  transform: rotate(90deg);
+}
+
+.model-details #model-summary-text {
+  color: var(--text);
+  font-weight: 500;
+}
+
+.model-inner {
+  padding: 4px 12px 12px;
+  border-top: 1px solid var(--border);
+}
+
 /* ── Deck row ── */
 .deck-row, .deck-new-row {
   display: flex;
