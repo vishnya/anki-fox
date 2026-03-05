@@ -2,9 +2,9 @@
 
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="fox-card-dark.png" />
-    <source media="(prefers-color-scheme: light)" srcset="fox-card-light.png" />
-    <img alt="anki-fox logo" src="fox-card-light.png" width="180" />
+    <source media="(prefers-color-scheme: dark)" srcset="fox-cards-all-dark.png" />
+    <source media="(prefers-color-scheme: light)" srcset="fox-cards-all-light.png" />
+    <img alt="anki-fox logo" src="fox-cards-all-light.png" width="640" />
   </picture>
 </p>
 
