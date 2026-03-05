@@ -99,3 +99,46 @@ class TestRhymeAdherence:
             f"Rhyme judge said '{verdict}'. "
             f"Card backs: {[c['back'] for c in cards]}"
         )
+
+    @pytest.mark.integration
+    def test_no_rhyme_prompt_does_not_rhyme(self, text_png):
+        """Generate cards WITHOUT a rhyming instruction and verify the judge
+        says they do NOT rhyme — confirms the judge isn't just saying yes."""
+        import anthropic
+
+        api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+        if not api_key:
+            pytest.skip("ANTHROPIC_API_KEY not set")
+
+        plain_config = {
+            "model": {"provider": "anthropic", "model_name": "claude-haiku-4-5"},
+            "api_keys": {"anthropic": api_key},
+            "custom_prompt": "",
+        }
+        cards = models.generate_cards(text_png, plain_config)
+        assert len(cards) >= 1
+
+        backs = "\n---\n".join(
+            f"Card {i+1} back:\n{c['back']}" for i, c in enumerate(cards)
+        )
+        client = anthropic.Anthropic(api_key=api_key)
+        judge = client.messages.create(
+            model="claude-haiku-4-5",
+            max_tokens=200,
+            messages=[{
+                "role": "user",
+                "content": (
+                    "You are a rhyme judge. The user asked for flashcard backs "
+                    "written as rhyming couplets. Below are the card backs produced. "
+                    "Does at least one card back contain a rhyming couplet "
+                    "(two lines whose ending words rhyme)?\n\n"
+                    f"{backs}\n\n"
+                    "Reply with ONLY 'yes' or 'no'."
+                ),
+            }],
+        )
+        verdict = judge.content[0].text.strip().lower()
+        assert verdict.startswith("no"), (
+            f"Expected judge to say 'no' for plain cards, but got '{verdict}'. "
+            f"Card backs: {[c['back'] for c in cards]}"
+        )
