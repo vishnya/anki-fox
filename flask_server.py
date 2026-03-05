@@ -217,7 +217,7 @@ def api_events():
             # Stream live events
             while True:
                 try:
-                    event = q.get(timeout=30)
+                    event = q.get(timeout=15)
                     yield f"data: {json.dumps(event)}\n\n"
                 except queue.Empty:
                     yield 'data: {"type":"ping"}\n\n'

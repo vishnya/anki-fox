@@ -61,7 +61,8 @@ let retryTimer    = null;
 
 // ── Init ───────────────────────────────────────────────────────────────────────
 async function init() {
-  await Promise.all([loadConfig(), loadDecks()]);
+  await loadConfig();
+  await loadDecks();
   connectSSE();
 }
 
@@ -399,8 +400,12 @@ stopBtn.addEventListener("click", async () => {
 });
 
 // ── SSE ────────────────────────────────────────────────────────────────────────
+let _eventSource = null;
+
 function connectSSE() {
+  if (_eventSource) { _eventSource.close(); _eventSource = null; }
   const es = new EventSource("/api/events");
+  _eventSource = es;
 
   es.onmessage = (e) => {
     const event = JSON.parse(e.data);
@@ -513,6 +518,11 @@ function showToast(msg, isError = false) {
   if (toastTimer) clearTimeout(toastTimer);
   toastTimer = setTimeout(() => toast.classList.remove("show"), 3000);
 }
+
+// ── Cleanup ─────────────────────────────────────────────────────────────────────
+window.addEventListener("beforeunload", () => {
+  if (_eventSource) { _eventSource.close(); _eventSource = null; }
+});
 
 // ── Boot ───────────────────────────────────────────────────────────────────────
 init();
