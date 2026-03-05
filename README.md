@@ -1,15 +1,17 @@
-<p align="center">
-<pre>
-┌───────────┐
-│   |\_/|   │
-│  /     \  │
-│ /_.o o,_\ │
-│    \@/    │
-└───────────┘
-</pre>
-</p>
+<h1 align="center">anki-fox</h1>
 
-# anki-fox
+<p align="center">
+
+```
+                        ┌───────────┐
+                        │   |\_/|   │
+                        │  /     \  │
+                        │ /_.o o,_\ │
+                        │    \@/    │
+                        └───────────┘
+```
+
+</p>
 
 Take a screenshot of anything — a textbook, slide, diagram — and get Anki flashcards automatically. Works with Claude, GPT-4o, Gemini, Groq, or any local model.
 
