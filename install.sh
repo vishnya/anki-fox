@@ -2,9 +2,9 @@
 set -e
 
 cat << 'BANNER'
-       /\   /\
-      (  o.o  )
-       > ^ <
+      /\_/\
+     ( o.o )
+      = ^ =
   === anki-fox setup ===
 BANNER
 echo ""
@@ -121,9 +121,9 @@ read -rp "Press Enter once you've granted both permissions... "
 
 echo ""
 cat << 'BANNER'
-       /\   /\
-      (  o.o  )
-       > ^ <
+      /\_/\
+     ( o.o )
+      = ^ =
     === Done! ===
 BANNER
 echo ""

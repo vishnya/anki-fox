@@ -2,9 +2,9 @@
 set -e
 
 cat << 'BANNER'
-       /\   /\
-      (  x.x  )
-       > ^ <
+      /\_/\
+     ( x.x )
+      = ^ =
   === anki-fox uninstall ===
 BANNER
 echo ""
