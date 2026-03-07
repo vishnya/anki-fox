@@ -8,119 +8,120 @@
   </picture>
 </p>
 
-Take a screenshot of anything — a textbook, slide, diagram — and get Anki flashcards automatically. Works with Claude, GPT-4o, Gemini, Groq, or any local model.
+**Screenshot anything. Get Anki flashcards in seconds.**
 
-## Requirements
+Point it at a textbook page, lecture slide, diagram, or article — press a hotkey, drag to select what you want to learn, and flashcards appear in Anki automatically. No copy-pasting, no typing.
 
-- macOS
-- [Anki](https://apps.ankiweb.net) installed
-- An API key for your chosen provider (or a local model via Ollama/LM Studio)
+Works with Claude, GPT-4o, Gemini, Groq, or a free local model (no internet required).
 
-Everything else (Hammerspoon, AnkiConnect, Python dependencies, background server) is handled by the install script.
+---
+
+## Quickstart
+
+1. Install [Anki](https://apps.ankiweb.net) if you haven't already
+2. Get an API key from your favorite AI provider (Anthropic, OpenAI, Google, or Groq — free tiers available)
+3. Run the installer:
+   ```bash
+   curl -fsSL https://raw.githubusercontent.com/vishnya/anki-fox/main/install.sh | bash
+   ```
+4. Follow the prompts — it walks you through everything, including the one-time Anki setup
+5. Press `⌥⇧A` (Option + Shift + A), paste your API key, pick a deck, click **Start Session**
+6. Press `⌥⇧A` again and drag over anything on your screen — cards appear in Anki in seconds
+
+---
+
+## What you need
+
+- A Mac
+- [Anki](https://apps.ankiweb.net) (free, download and install it first)
+- An API key from one of the supported AI providers — or a free local model (see below)
+
+The installer handles everything else automatically.
+
+---
 
 ## Install
+
+Open Terminal and paste this:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/vishnya/anki-fox/main/install.sh | bash
 ```
 
-The script:
-- Installs [Hammerspoon](https://www.hammerspoon.org) (via Homebrew) — a macOS automation tool that powers the global hotkeys
-- Installs [uv](https://github.com/astral-sh/uv) (if needed) and creates a `.venv` with Python dependencies from `requirements.txt`
-- Opens Anki and walks you through adding the AnkiConnect add-on (code: `2055492159`)
-- Sets up a launchd agent so the server starts automatically on login
+The installer will:
+- Install the tools it needs (Homebrew, Hammerspoon, Python)
+- Walk you through a one-time Anki setup (just copy-paste an add-on code)
+- Start a background service that runs automatically on login
 
-### Hammerspoon permissions
+**One thing you'll need to do manually:** grant two permissions to Hammerspoon when macOS asks — Accessibility and Screen Recording. Both are in System Settings > Privacy & Security. Without these, the hotkey and screenshots won't work.
 
-Hammerspoon needs two macOS permissions to function. The install script will prompt you, but if you need to grant them manually:
+If hotkeys stop working after granting permissions, click the Hammerspoon icon in your menu bar and choose Quit, then reopen it.
 
-1. **Accessibility** (required for the hotkey to work)
-   - System Settings > Privacy & Security > Accessibility > toggle **Hammerspoon** ON
-2. **Screen Recording** (required for screenshots)
-   - System Settings > Privacy & Security > Screen Recording > toggle **Hammerspoon** ON
+---
 
-If hotkeys don't work after granting permissions, quit Hammerspoon (click the menu bar icon > Quit) and reopen it.
+## How to use it
 
-## Usage
+| Hotkey | What it does |
+|--------|--------------|
+| `⌥⇧A` (Option + Shift + A) | Opens setup if no session is running. Takes a screenshot if one is. |
+| `⌥⇧⌘A` (Option + Shift + Cmd + A) | Stops the current session and reopens setup. |
 
-| Hotkey | Action |
-|--------|--------|
-| `⌥⇧A` | Session active: takes screenshot. No session: opens config page. |
-| `⌥⇧⌘A` | Stop session and reopen config page (switch decks/subjects). |
+**Step by step:**
 
-**Workflow:**
-1. Press `⌥⇧A` — browser opens to `http://localhost:5789`
-2. Choose a deck, pick your model, add your API key, click **Start Session**
-3. Press `⌥⇧A` — drag to select any region of your screen
-4. Cards appear in Anki within ~10 seconds
-5. Watch progress in the **Activity Log** and cards in the **Recent Cards** panel
+1. Press `⌥⇧A` — your browser opens to the anki-fox setup page
+2. Choose which Anki deck to add cards to
+3. Pick an AI model and paste your API key
+4. Click **Start Session**
+5. Press `⌥⇧A` again, then drag to select any part of your screen
+6. Cards show up in Anki in about 10 seconds
 
-## Model support
+You can watch progress live in the **Activity Log** on the setup page.
 
-Configure everything in the web UI — no decisions needed at install time. The **Model name** field (next to the Provider dropdown) controls the exact model; change it any time and it autosaves.
+---
 
-| Provider | Default model | Other models | API key |
-|----------|--------------|--------------|---------|
-| Anthropic *(default)* | `claude-sonnet-4-6` | `claude-opus-4-6` | [console.anthropic.com](https://console.anthropic.com) |
-| OpenAI | `gpt-4o` | `gpt-4-turbo`, `gpt-4o-mini` | [platform.openai.com/api-keys](https://platform.openai.com/api-keys) |
-| Groq | `llama-3.3-70b-versatile` | `llama-3.2-90b-vision-preview` | [console.groq.com](https://console.groq.com) |
-| Gemini | `gemini-2.0-flash` | `gemini-1.5-pro`, `gemini-2.0-pro` | [aistudio.google.com](https://aistudio.google.com) |
-| Custom endpoint | `minicpm-v` | `qwen2.5-vl`, `llava:13b`, `llama3.2-vision` | none required |
+## Which AI model should I use?
 
-### Custom endpoint
+The setup page has a dropdown — you can switch models any time and it saves automatically.
 
-Use this for any server that speaks the OpenAI API format — local or remote. No API key field is shown; the server handles auth however it chooses.
+| Provider | Cost | Where to get a key |
+|----------|------|--------------------|
+| Anthropic (Claude) — *default* | Paid, ~$0.01–0.05 per screenshot | [console.anthropic.com](https://console.anthropic.com) |
+| OpenAI (GPT-4o) | Paid, similar pricing | [platform.openai.com/api-keys](https://platform.openai.com/api-keys) |
+| Google (Gemini) | Free tier available | [aistudio.google.com](https://aistudio.google.com) |
+| Groq | Free tier available | [console.groq.com](https://console.groq.com) |
+| Local model (Ollama) | Free, runs on your Mac | No key needed — see below |
 
-**Ollama (local, free)**
+### Free option: run a local model with Ollama
+
+No internet connection or API key required. Quality is lower than cloud models, but it's completely free.
+
 ```bash
 brew install ollama
-ollama pull minicpm-v   # recommended — or: qwen2.5-vl, llava:13b, llama3.2-vision
+ollama pull minicpm-v
 ```
+
+Then in the setup page, choose **Custom endpoint** and set:
 - Base URL: `http://localhost:11434/v1`
-- Model name: `minicpm-v` (match exactly what `ollama list` shows)
-- JSON output is forced via `response_format` so even models that tend to add commentary will produce valid cards
+- Model name: `minicpm-v`
 
-**LM Studio (local, free)**
-1. Download from [lmstudio.ai](https://lmstudio.ai) and load a vision model
-2. Start the local server (default port 1234)
-- Base URL: `http://localhost:1234/v1`
-- Model name: the model identifier shown in LM Studio's server tab
+---
 
-**Remote / self-hosted (vLLM, llama.cpp, Together AI, etc.)**
-- Base URL: your server's address, e.g. `http://192.168.1.10:8000/v1`
-- Model name: whatever identifier your server expects
+## Where are my settings stored?
 
-> Vision support varies by model. Whichever model you choose must accept image inputs — check before using.
+In `~/.anki-fox/config.json`. The file is private (readable only by you). Settings save automatically — there's no Save button.
 
-## Config
+If you have `$ANTHROPIC_API_KEY` set in your terminal environment, it will pre-fill on first run.
 
-Settings (deck, model, API key, custom prompt) are saved to `~/.anki-fox/config.json` with `chmod 600` and autosaved on blur — no explicit save step needed. The last-used deck is remembered and pre-selected on next visit. If `$ANTHROPIC_API_KEY` is set in your environment, it pre-fills on first run.
+---
 
-## Server logs
+## Troubleshooting
 
+View the server log:
 ```bash
 tail -f /tmp/anki-fox.log
 ```
 
-## Claude `/anki` skill
-
-If you use [Claude Code](https://claude.ai/code), there's a `/anki` slash command that loads full project context. The install script adds it automatically.
-
-## How it works
-
-```
-⌥⇧A keypress (Hammerspoon)
-  → GET /api/session → session active?
-  → yes: screencapture -i → saves PNG to ~/AnkiFox/incoming/
-  → no:  opens http://localhost:5789 in browser
-
-flask_server.py (launchd background process, port 5789)
-  → serves web UI at /
-  → watchdog thread detects new PNG in incoming/
-  → calls models.py → Claude/GPT/Groq/Gemini/Ollama generates cards
-  → AnkiConnect HTTP API (localhost:8765) adds cards to Anki
-  → SSE stream pushes progress to browser
-```
+---
 
 ## Uninstall
 
@@ -128,30 +129,4 @@ flask_server.py (launchd background process, port 5789)
 bash ~/anki-fox/uninstall.sh
 ```
 
-Stops and removes the launchd agent, removes symlinks and the shell function. Prompts before deleting the repo.
-
-## Files
-
-```
-flask_server.py       # Flask app: API endpoints + watchdog thread
-config.py             # Read/write ~/.anki-fox/config.json
-models.py             # Provider abstraction: Anthropic / OpenAI / Groq / Gemini / custom
-requirements.txt      # Python dependencies (installed into .venv by install.sh)
-anki.zsh              # anki() shell function (sourced by ~/.zshrc)
-hammerspoon/
-  init.lua            # Hotkey: checks session via GET /api/session
-web/
-  templates/
-    index.html        # Config + session UI
-  static/
-    style.css         # Dark theme
-    app.js            # Deck fetch, config save, session control, SSE cards
-launchd/
-  com.anki-fox.plist   # launchd template (install.sh fills in paths)
-tests/                # pytest suite
-claude/
-  anki.md             # /anki Claude Code skill
-CONTEXT.md            # Living architecture doc, updated each Claude session
-install.sh            # One-step installer
-uninstall.sh          # Removes everything install.sh added
-```
+This removes everything the installer added and prompts before deleting the repo folder.
