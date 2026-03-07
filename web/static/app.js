@@ -1,23 +1,23 @@
 // ── Constants ──────────────────────────────────────────────────────────────────
 const MODEL_DEFAULTS = {
   anthropic: {
-    label: "Claude", apiKeyLabel: "Anthropic API Key", hasKey: true, hasUrl: false,
+    label: "Claude", apiKeyLabel: "Anthropic API Key", apiKeyPlaceholder: "sk-ant-...", hasKey: true, hasUrl: false,
     models: ["claude-sonnet-4-6", "claude-opus-4-6", "claude-haiku-4-5", "claude-sonnet-4-5"],
   },
   openai: {
-    label: "GPT", apiKeyLabel: "OpenAI API Key", hasKey: true, hasUrl: false,
+    label: "GPT", apiKeyLabel: "OpenAI API Key", apiKeyPlaceholder: "sk-...", hasKey: true, hasUrl: false,
     models: ["gpt-4o", "gpt-4o-mini", "o3-mini", "gpt-4-turbo"],
   },
   groq: {
-    label: "Groq", apiKeyLabel: "Groq API Key", hasKey: true, hasUrl: false,
+    label: "Groq", apiKeyLabel: "Groq API Key", apiKeyPlaceholder: "gsk_...", hasKey: true, hasUrl: false,
     models: ["llama-3.3-70b-versatile", "mixtral-8x7b-32768"],
   },
   gemini: {
-    label: "Gemini", apiKeyLabel: "Gemini API Key", hasKey: true, hasUrl: false,
+    label: "Gemini", apiKeyLabel: "Gemini API Key", apiKeyPlaceholder: "AIza...", hasKey: true, hasUrl: false,
     models: ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash", "gemini-1.5-pro"],
   },
   custom: {
-    label: "Custom", apiKeyLabel: "", hasKey: false, hasUrl: true,
+    label: "Custom", apiKeyLabel: "", apiKeyPlaceholder: "", hasKey: false, hasUrl: true,
     models: [],
   },
 };
@@ -168,7 +168,18 @@ async function saveConfig() {
 });
 
 modelNameInput.addEventListener("change", saveConfig);
-modelNameInput.addEventListener("blur", () => { setTimeout(() => modelListEl.classList.remove("open"), 150); saveConfig(); });
+modelNameInput.addEventListener("blur", () => {
+  setTimeout(() => {
+    modelListEl.classList.remove("open");
+    // Snap to a valid model — if typed value isn't in the list, revert to closest match or first
+    const typed = modelNameInput.value.trim().toLowerCase();
+    const match = _allModels.find(m => m.toLowerCase() === typed)
+               || _allModels.find(m => m.toLowerCase().includes(typed));
+    modelNameInput.value = match || _allModels[0] || "";
+    updateModelSummary();
+    saveConfig();
+  }, 150);
+});
 
 // Prompt gets its own blur handler so it can update the saved indicator
 promptInput.addEventListener("blur", async () => {
@@ -265,6 +276,11 @@ async function updateProviderUI(provider, resetName) {
   if (meta.hasKey) {
     apiKeyField.classList.remove("hidden");
     apiKeyLabel.textContent = meta.apiKeyLabel;
+    // Derive placeholder from saved key prefix, fall back to hardcoded hint
+    const savedKey = config?.api_keys?.[provider] || "";
+    apiKeyInput.placeholder = savedKey
+      ? savedKey.slice(0, 4) + "..."
+      : meta.apiKeyPlaceholder;
   } else {
     apiKeyField.classList.add("hidden");
   }
