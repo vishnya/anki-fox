@@ -12,7 +12,7 @@
 
 Point it at a textbook page, lecture slide, diagram, or article — press a hotkey, drag to select what you want to learn, and flashcards appear in Anki automatically. No copy-pasting, no typing.
 
-Works with Claude, GPT-4o, Gemini, Groq, or a free local model (no internet required).
+Works with Anthropic, OpenAI, Google, Groq, or a free local model (no internet required).
 
 ---
 
