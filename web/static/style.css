@@ -389,6 +389,49 @@ textarea {
   padding: 16px 0;
 }
 
+/* ── Combobox (typeahead model selector) ── */
+.combobox {
+  position: relative;
+}
+
+.combobox input {
+  width: 100%;
+}
+
+.combobox-list {
+  display: none;
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 10;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-top: none;
+  border-radius: 0 0 var(--radius) var(--radius);
+  max-height: 200px;
+  overflow-y: auto;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.combobox-list.open {
+  display: block;
+}
+
+.combobox-list li {
+  padding: 6px 10px;
+  font-size: 13px;
+  cursor: pointer;
+  color: var(--text);
+}
+
+.combobox-list li:hover {
+  background: var(--accent);
+  color: #fff;
+}
+
 /* ── Toast ── */
 #toast {
   position: fixed;

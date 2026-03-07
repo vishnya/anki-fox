@@ -179,6 +179,90 @@ def api_config_post():
     return jsonify({"ok": True})
 
 
+@app.route("/api/models/<provider>")
+def api_models(provider):
+    """Fetch available models from the provider's API. Returns top 10 most relevant."""
+    import requests as req
+
+    MAX_MODELS = 10
+    conf = cfg.load()
+    api_key = conf.get("api_keys", {}).get(provider, "")
+    if not api_key:
+        return jsonify([])
+
+    try:
+        if provider == "anthropic":
+            r = req.get(
+                "https://api.anthropic.com/v1/models",
+                headers={"x-api-key": api_key, "anthropic-version": "2023-06-01"},
+                timeout=5,
+            )
+            r.raise_for_status()
+            # Only claude models, sorted newest first
+            models = sorted(
+                [m["id"] for m in r.json().get("data", []) if m["id"].startswith("claude-")],
+                reverse=True,
+            )[:MAX_MODELS]
+
+        elif provider == "openai":
+            r = req.get(
+                "https://api.openai.com/v1/models",
+                headers={"Authorization": f"Bearer {api_key}"},
+                timeout=5,
+            )
+            r.raise_for_status()
+            all_models = r.json().get("data", [])
+            # Filter to chat models, skip embeddings/tts/dall-e/whisper/search etc.
+            skip = ("embed", "tts", "dall-e", "whisper", "davinci", "babbage",
+                    "moderation", "search", "similarity", "instruct")
+            chat_models = [
+                m for m in all_models
+                if not any(k in m["id"] for k in skip)
+                and any(k in m["id"] for k in ("gpt-", "o1", "o3", "o4", "chatgpt"))
+            ]
+            # Sort by creation date (newest first)
+            chat_models.sort(key=lambda m: m.get("created", 0), reverse=True)
+            models = [m["id"] for m in chat_models][:MAX_MODELS]
+
+        elif provider == "groq":
+            r = req.get(
+                "https://api.groq.com/openai/v1/models",
+                headers={"Authorization": f"Bearer {api_key}"},
+                timeout=5,
+            )
+            r.raise_for_status()
+            all_models = r.json().get("data", [])
+            all_models.sort(key=lambda m: m.get("created", 0), reverse=True)
+            models = [m["id"] for m in all_models][:MAX_MODELS]
+
+        elif provider == "gemini":
+            r = req.get(
+                f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}",
+                timeout=5,
+            )
+            r.raise_for_status()
+            # Only gemini models that support generateContent, skip robotics/tts/etc
+            skip_gemini = ("robotics", "tts", "image-preview", "customtools",
+                           "embedding", "aqa", "bisheng")
+            gemini_models = [
+                m["name"].removeprefix("models/")
+                for m in r.json().get("models", [])
+                if "generateContent" in m.get("supportedGenerationMethods", [])
+                and m["name"].startswith("models/gemini-")
+                and not any(k in m["name"] for k in skip_gemini)
+            ]
+            # Sort reverse alpha (newest version numbers first)
+            models = sorted(gemini_models, reverse=True)[:MAX_MODELS]
+
+        else:
+            return jsonify([])
+
+        return jsonify(models)
+
+    except Exception:
+        return jsonify([])
+
+
 @app.route("/api/session", methods=["GET"])
 def api_session():
     conf = cfg.load()

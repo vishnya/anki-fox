@@ -1,23 +1,23 @@
 // ── Constants ──────────────────────────────────────────────────────────────────
 const MODEL_DEFAULTS = {
   anthropic: {
-    label: "Claude", apiKeyLabel: "Anthropic API Key", hasKey: true, hasUrl: false,
+    label: "Claude", apiKeyLabel: "Anthropic API Key", apiKeyPlaceholder: "sk-ant-...", hasKey: true, hasUrl: false,
     models: ["claude-sonnet-4-6", "claude-opus-4-6", "claude-haiku-4-5", "claude-sonnet-4-5"],
   },
   openai: {
-    label: "GPT", apiKeyLabel: "OpenAI API Key", hasKey: true, hasUrl: false,
+    label: "GPT", apiKeyLabel: "OpenAI API Key", apiKeyPlaceholder: "sk-...", hasKey: true, hasUrl: false,
     models: ["gpt-4o", "gpt-4o-mini", "o3-mini", "gpt-4-turbo"],
   },
   groq: {
-    label: "Groq", apiKeyLabel: "Groq API Key", hasKey: true, hasUrl: false,
+    label: "Groq", apiKeyLabel: "Groq API Key", apiKeyPlaceholder: "gsk_...", hasKey: true, hasUrl: false,
     models: ["llama-3.3-70b-versatile", "mixtral-8x7b-32768"],
   },
   gemini: {
-    label: "Gemini", apiKeyLabel: "Gemini API Key", hasKey: true, hasUrl: false,
-    models: ["gemini-2.0-flash", "gemini-2.0-pro", "gemini-1.5-pro", "gemini-2.5-pro-exp"],
+    label: "Gemini", apiKeyLabel: "Gemini API Key", apiKeyPlaceholder: "AIza...", hasKey: true, hasUrl: false,
+    models: ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.0-flash", "gemini-1.5-pro"],
   },
   custom: {
-    label: "Custom", apiKeyLabel: "", hasKey: false, hasUrl: true,
+    label: "Custom", apiKeyLabel: "", apiKeyPlaceholder: "", hasKey: false, hasUrl: true,
     models: [],
   },
 };
@@ -31,7 +31,8 @@ const deckNewRow      = document.getElementById("deck-new-row");
 const deckNewInput    = document.getElementById("deck-new-input");
 const btnCancelDeck   = document.getElementById("btn-cancel-deck");
 const providerSelect    = document.getElementById("provider");
-const modelNameSelect   = document.getElementById("model-name");
+const modelNameInput    = document.getElementById("model-name");
+const modelListEl       = document.getElementById("model-list");
 const modelCustomField  = document.getElementById("field-model-custom");
 const modelCustomInput  = document.getElementById("model-name-custom");
 const modelSelectField  = document.getElementById("field-model-select");
@@ -77,7 +78,7 @@ async function loadConfig() {
   promptInput.value    = config.custom_prompt || "";
   apiKeyInput.value    = config.api_keys?.[provider] || "";
 
-  updateProviderUI(provider, false);
+  await updateProviderUI(provider, false);
   setModelValue(config.model?.model_name || "");
   updatePromptSavedIndicator(config.deck);
   updateSessionUI();
@@ -166,7 +167,19 @@ async function saveConfig() {
   el.addEventListener("blur", saveConfig);
 });
 
-modelNameSelect.addEventListener("change", saveConfig);
+modelNameInput.addEventListener("change", saveConfig);
+modelNameInput.addEventListener("blur", () => {
+  setTimeout(() => {
+    modelListEl.classList.remove("open");
+    // Snap to a valid model — if typed value isn't in the list, revert to closest match or first
+    const typed = modelNameInput.value.trim().toLowerCase();
+    const match = _allModels.find(m => m.toLowerCase() === typed)
+               || _allModels.find(m => m.toLowerCase().includes(typed));
+    modelNameInput.value = match || _allModels[0] || "";
+    updateModelSummary();
+    saveConfig();
+  }, 150);
+});
 
 // Prompt gets its own blur handler so it can update the saved indicator
 promptInput.addEventListener("blur", async () => {
@@ -178,7 +191,7 @@ promptInput.addEventListener("blur", async () => {
 function getModelName() {
   const provider = providerSelect.value;
   if (provider === "custom") return modelCustomInput.value.trim();
-  return modelNameSelect.value;
+  return modelNameInput.value.trim();
 }
 
 function setModelValue(name) {
@@ -186,10 +199,7 @@ function setModelValue(name) {
   if (provider === "custom") {
     modelCustomInput.value = name;
   } else {
-    // If saved model is in the list, select it; otherwise pick first
-    if ([...modelNameSelect.options].some(o => o.value === name)) {
-      modelNameSelect.value = name;
-    }
+    modelNameInput.value = name;
   }
   updateModelSummary();
 }
@@ -199,18 +209,52 @@ function updateModelSummary() {
   modelSummaryText.textContent = `${meta.label} ${getModelName()}`;
 }
 
-function populateModelDropdown(provider) {
+let _allModels = [];
+
+async function populateModelDropdown(provider) {
   const meta = MODEL_DEFAULTS[provider] || MODEL_DEFAULTS.anthropic;
-  modelNameSelect.innerHTML = "";
-  meta.models.forEach(m => {
-    const opt = document.createElement("option");
-    opt.value = m;
-    opt.textContent = m;
-    modelNameSelect.appendChild(opt);
+
+  // Try fetching live models from the provider API
+  let models = meta.models;  // fallback
+  try {
+    const res = await fetch(`/api/models/${provider}`);
+    const live = await res.json();
+    if (Array.isArray(live) && live.length > 0) models = live;
+  } catch { /* use fallback */ }
+
+  _allModels = models;
+  _renderModelList(models);
+}
+
+function _renderModelList(models) {
+  modelListEl.innerHTML = "";
+  models.forEach(m => {
+    const li = document.createElement("li");
+    li.textContent = m;
+    li.addEventListener("mousedown", (e) => {
+      e.preventDefault();  // keep focus on input
+      modelNameInput.value = m;
+      modelListEl.classList.remove("open");
+      updateModelSummary();
+      saveConfig();
+    });
+    modelListEl.appendChild(li);
   });
 }
 
-function updateProviderUI(provider, resetName) {
+modelNameInput.addEventListener("focus", () => {
+  _renderModelList(_allModels);
+  modelListEl.classList.add("open");
+});
+
+modelNameInput.addEventListener("input", () => {
+  const q = modelNameInput.value.toLowerCase();
+  const filtered = _allModels.filter(m => m.toLowerCase().includes(q));
+  _renderModelList(filtered);
+  modelListEl.classList.add("open");
+});
+
+async function updateProviderUI(provider, resetName) {
   const meta = MODEL_DEFAULTS[provider] || MODEL_DEFAULTS.anthropic;
 
   // Model dropdown vs free text
@@ -221,8 +265,8 @@ function updateProviderUI(provider, resetName) {
   } else {
     modelSelectField.classList.remove("hidden");
     modelCustomField.classList.add("hidden");
-    populateModelDropdown(provider);
-    if (resetName) modelNameSelect.value = meta.models[0];
+    await populateModelDropdown(provider);
+    if (resetName) modelNameInput.value = _allModels[0] || "";
   }
 
   if (resetName) {
@@ -232,6 +276,11 @@ function updateProviderUI(provider, resetName) {
   if (meta.hasKey) {
     apiKeyField.classList.remove("hidden");
     apiKeyLabel.textContent = meta.apiKeyLabel;
+    // Derive placeholder from saved key prefix, fall back to hardcoded hint
+    const savedKey = config?.api_keys?.[provider] || "";
+    apiKeyInput.placeholder = savedKey
+      ? savedKey.slice(0, 4) + "..."
+      : meta.apiKeyPlaceholder;
   } else {
     apiKeyField.classList.add("hidden");
   }
@@ -245,8 +294,8 @@ function updateProviderUI(provider, resetName) {
   updateModelSummary();
 }
 
-providerSelect.addEventListener("change", () => {
-  updateProviderUI(providerSelect.value, true);
+providerSelect.addEventListener("change", async () => {
+  await updateProviderUI(providerSelect.value, true);
   saveConfig();
 });
 
@@ -349,7 +398,7 @@ function updateSessionUI() {
 }
 
 function setFormDisabled(disabled) {
-  [deckSelect, providerSelect, modelNameSelect, modelCustomInput, apiKeyInput, baseUrlInput, promptInput, btnNewDeck]
+  [deckSelect, providerSelect, modelNameInput, modelCustomInput, apiKeyInput, baseUrlInput, promptInput, btnNewDeck]
     .forEach(el => { el.disabled = disabled; });
 }
 
@@ -412,9 +461,9 @@ function connectSSE() {
 
     if (event.type === "ping")    return;
     if (event.type === "recent")  { renderCards(event.cards); return; }
-    if (event.type === "done")    { logActivity(event.message, "done"); showToast(event.message); if (event.cards?.length) prependCards(event.cards); return; }
-    if (event.type === "error")   { logActivity(event.message, "error"); showToast("Error: " + event.message, true); return; }
-    if (event.type === "progress") { logActivity(event.message, "progress"); showToast(event.message); }
+    if (event.type === "done")    { logActivity(event.message, "done"); if (event.cards?.length) prependCards(event.cards); return; }
+    if (event.type === "error")   { logActivity(event.message, "error"); return; }
+    if (event.type === "progress") { logActivity(event.message, "progress"); }
   };
 }
 
