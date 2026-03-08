@@ -24,6 +24,14 @@ app = Flask(
 )
 app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 0
 
+@app.after_request
+def add_no_cache(response):
+    if "text/html" in response.content_type or "javascript" in response.content_type or "text/css" in response.content_type:
+        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+    return response
+
 # ── SSE broadcast ────────────────────────────────────────────────────────────────
 _sse_subscribers: list[queue.Queue] = []
 _sse_lock = threading.Lock()
