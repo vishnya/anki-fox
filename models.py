@@ -42,22 +42,26 @@ If the screenshot contains a DIAGRAM, CHART, or FIGURE:
 - Break the diagram into multiple cards, each testing one concept shown in the diagram.
 - CRITICAL: the reviewer will NOT see the diagram when studying the front of the card. The front MUST be a standalone factual question that makes perfect sense without any image. Extract specific facts, numbers, or relationships from the diagram and ask about those directly.
 - NEVER reference the chart, diagram, figure, graph, or image on the front. Do not use phrases like "in the chart", "the chart shows", "when looking at the chart", "what does the diagram illustrate", "what types does the chart distinguish", "according to this chart", or "according to the diagram". The front must read as a normal knowledge question.
+- NEVER reference visual symbols from the diagram on the back either. Do not say "marked ×", "shown as circles", "the blue line", "the dashed curve", etc. The back must be pure text that makes sense without seeing any image.
 - Front: you can append "(Diagram)" at the end to signal a diagram is on the back.
 - DIAGRAM CARD EXAMPLES — study these carefully:
   BAD: "What does the 'LLM Parameter Evolution' chart show about how models changed from 2018 to 2026? (Diagram)" — references the chart as something the user is looking at.
   BAD: "When looking at a chart of LLM parameter evolution, what does it mean that the axis uses a log scale?" — the user cannot see any chart.
   BAD: "What are the two main types of LLM architectures the chart distinguishes between?" — references the chart.
   BAD: "Roughly when did MoE architectures start appearing in LLMs, according to this chart?" — "according to this chart" references the image. Just remove it and add (Diagram).
+  BAD: "Which frontier models around 2024-2026 use MoE vs dense?" / "MoE models (marked ×) include GPT-4o... Dense models (circles) include..." — "around 2024-2026" only makes sense with the chart's axis, and "marked ×" / "circles" reference visual symbols the user can't see.
+  GOOD: "Name some LLMs that use Mixture-of-Experts architecture. (Diagram)" / "GPT-4o, Gemini 1.5 Pro, GPT-5, and Claude 4.6 Opus all use MoE, routing each token to a subset of expert sub-networks."
   GOOD: "Roughly when did Mixture-of-Experts (MoE) architectures start appearing in LLMs? (Diagram)" / "Around 2021-2022, with models like GLaM and Switch Transformer."
   GOOD: "How many parameters did GPT-2 have, and when was it introduced? (Diagram)" / "1.5 billion parameters, introduced in February 2019."
   GOOD: "What are the three stages of compilation? (Diagram)" / "Lexing, parsing, and code generation."
-- Back: a text explanation that fully answers the question. The diagram image is attached automatically, but the text must stand on its own.
+- Back: a text explanation that fully answers the question. The diagram image is attached automatically, but the text must stand on its own — no references to visual elements like colors, symbols, or axis positions.
 - Set is_image_card: true on EVERY card generated from a diagram so the image gets attached to all of them.
 - If the screenshot also contains regular text or paragraphs outside the diagram, generate additional cards for that content too.
 
 SELF-CHECK: before returning JSON, read each card and ask:
 1. "Would a smart 16-year-old understand this immediately?" If not, rewrite it.
 2. For diagram cards: "Does the front make sense if the reader has NEVER seen the diagram?" If the front mentions the chart, graph, figure, or diagram in any way (other than the "(Diagram)" tag), rewrite it as a standalone factual question.
+3. For diagram cards: "Does the back reference any visual elements (symbols, colors, markers, axis labels)?" If so, rewrite using only words — no "marked ×", "circles", "blue line", etc.
 
 Return ONLY valid JSON in this exact format, no other text:
 {
