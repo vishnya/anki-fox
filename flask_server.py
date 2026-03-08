@@ -32,12 +32,27 @@ _sse_lock = threading.Lock()
 _recent_cards: list[dict] = []
 _recent_lock  = threading.Lock()
 
+# ── Activity log (kept in memory, newest-first) ──────────────────────────────────
+_activity_log: list[dict] = []  # {"message": str, "type": str, "ts": float}
+_activity_lock = threading.Lock()
+
 # ── Undo: batch_id → list of note IDs ─────────────────────────────────────────────
 _batches: dict[str, list[int]] = {}  # keeps last 10 batches
 _batches_lock = threading.Lock()
 
 
 def _push_event(data: dict):
+    # Persist log-worthy events for replay on reconnect
+    etype = data.get("type", "")
+    if etype in ("progress", "done", "error", "undo"):
+        with _activity_lock:
+            _activity_log.insert(0, {
+                "message": data.get("message", ""),
+                "type":    etype,
+                "ts":      time.time(),
+            })
+            del _activity_log[20:]  # keep last 20
+
     with _sse_lock:
         dead = []
         for q in _sse_subscribers:
@@ -333,11 +348,15 @@ def api_events():
 
     def stream():
         try:
-            # Send recent cards immediately on connect
+            # Send recent cards + activity log immediately on connect
             with _recent_lock:
                 snapshot = list(_recent_cards)
-            if snapshot:
-                yield f"data: {json.dumps({'type': 'recent', 'cards': snapshot})}\n\n"
+            with _batches_lock:
+                undoable = list(_batches.keys())
+            with _activity_lock:
+                log_snapshot = list(_activity_log)
+            if snapshot or log_snapshot:
+                yield f"data: {json.dumps({'type': 'recent', 'cards': snapshot, 'undoable_batches': undoable, 'activity_log': log_snapshot})}\n\n"
             # Stream live events
             while True:
                 try:

@@ -475,7 +475,7 @@ function connectSSE() {
     const event = JSON.parse(e.data);
 
     if (event.type === "ping")    return;
-    if (event.type === "recent")  { renderCards(event.cards); return; }
+    if (event.type === "recent")  { renderCards(event.cards, event.undoable_batches); renderActivityLog(event.activity_log); return; }
     if (event.type === "done")    { logActivity(event.message, "done"); if (event.cards?.length) prependCards(event.cards, event.batch_id); return; }
     if (event.type === "undo")   { logActivity(event.message, "done"); removeBatch(event.batch_id); return; }
     if (event.type === "error")   { logActivity(event.message, "error"); return; }
@@ -484,12 +484,13 @@ function connectSSE() {
 }
 
 // ── Recent cards ───────────────────────────────────────────────────────────────
-function renderCards(cards) {
+function renderCards(cards, undoableBatches) {
   cardsList.innerHTML = "";
-  if (!cards.length) {
+  if (!cards || !cards.length) {
     cardsList.innerHTML = '<li class="empty-state">No cards yet this session</li>';
     return;
   }
+  const undoSet = new Set(undoableBatches || []);
   // Group by batch_id, preserving order (newest first)
   const seen = new Set();
   for (const c of cards) {
@@ -503,12 +504,16 @@ function renderCards(cards) {
       const label = document.createElement("span");
       label.className = "batch-label";
       label.textContent = `${batchCards.length} card(s) added`;
-      const btn = document.createElement("button");
-      btn.className = "btn-undo";
-      btn.textContent = "Undo";
-      btn.addEventListener("click", () => undoBatch(bid, btn));
-      header.appendChild(label);
-      header.appendChild(btn);
+      if (undoSet.has(bid)) {
+        const btn = document.createElement("button");
+        btn.className = "btn-undo";
+        btn.textContent = "Undo";
+        btn.addEventListener("click", () => undoBatch(bid, btn));
+        header.appendChild(label);
+        header.appendChild(btn);
+      } else {
+        header.appendChild(label);
+      }
       cardsList.appendChild(header);
       batchCards.forEach(bc => cardsList.appendChild(buildCardLi(bc)));
     } else if (!bid) {
@@ -617,6 +622,28 @@ function reltime(ts) {
 }
 
 // ── Activity log ───────────────────────────────────────────────────────────
+function renderActivityLog(entries) {
+  if (!entries || !entries.length) return;
+  activityLog.classList.remove("hidden");
+  activityLog.innerHTML = "";
+  // entries are newest-first from server
+  for (const entry of entries) {
+    const li = document.createElement("li");
+    li.className = `log-${entry.type}`;
+    const d = new Date(entry.ts * 1000);
+    const ts = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    const tsSpan = document.createElement("span");
+    tsSpan.className = "log-ts";
+    tsSpan.textContent = ts;
+    const msgSpan = document.createElement("span");
+    msgSpan.className = "log-msg";
+    msgSpan.textContent = entry.message;
+    li.appendChild(tsSpan);
+    li.appendChild(msgSpan);
+    activityLog.appendChild(li);
+  }
+}
+
 function logActivity(message, type = "progress") {
   activityLog.classList.remove("hidden");
   const li = document.createElement("li");
