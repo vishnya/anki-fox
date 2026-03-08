@@ -329,6 +329,7 @@ def api_session_start():
     conf = cfg.load()
     conf["session_active"] = True
     cfg.save(conf)
+    _push_event({"type": "session_start", "deck": conf.get("deck", "")})
     return jsonify({"ok": True, "deck": conf.get("deck", "")})
 
 
@@ -337,6 +338,7 @@ def api_session_stop():
     conf = cfg.load()
     conf["session_active"] = False
     cfg.save(conf)
+    _push_event({"type": "session_stop"})
     return jsonify({"ok": True})
 
 

@@ -476,6 +476,18 @@ function connectSSE() {
 
     if (event.type === "ping")    return;
     if (event.type === "recent")  { renderCards(event.cards, event.undoable_batches); renderActivityLog(event.activity_log); return; }
+    if (event.type === "session_start") {
+      sessionActive = true;
+      // Reload config so we pick up the new deck/model from whoever started the session
+      fetch("/api/config").then(r => r.json()).then(c => { config = c; updateSessionUI(); });
+      return;
+    }
+    if (event.type === "session_stop") {
+      sessionActive = false;
+      if (config) config.session_active = false;
+      updateSessionUI();
+      return;
+    }
     if (event.type === "done")    { logActivity(event.message, "done"); if (event.cards?.length) prependCards(event.cards, event.batch_id); return; }
     if (event.type === "undo")   { logActivity(event.message, "done"); removeBatch(event.batch_id); return; }
     if (event.type === "error")   { logActivity(event.message, "error"); return; }
