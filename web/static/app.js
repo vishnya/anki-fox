@@ -77,6 +77,7 @@ async function loadConfig() {
   baseUrlInput.value   = config.model?.base_url   || "";
   promptInput.value    = config.custom_prompt || "";
   apiKeyInput.value    = config.api_keys?.[provider] || "";
+  _skipDeleteConfirm   = !!config.skip_delete_confirm;
 
   await updateProviderUI(provider, false);
   setModelValue(config.model?.model_name || "");
@@ -480,7 +481,10 @@ function confirmDelete(message) {
     document.body.appendChild(overlay);
     cancelBtn.addEventListener("click", () => { overlay.remove(); resolve(false); });
     deleteBtn.addEventListener("click", () => {
-      if (check.checked) _skipDeleteConfirm = true;
+      if (check.checked) {
+        _skipDeleteConfirm = true;
+        fetch("/api/config", { method: "POST", body: JSON.stringify({ skip_delete_confirm: true }), headers: { "Content-Type": "application/json" } });
+      }
       overlay.remove();
       resolve(true);
     });
@@ -518,7 +522,7 @@ function connectSSE() {
     const event = JSON.parse(e.data);
 
     if (event.type === "ping")    return;
-    if (event.type === "recent")  { renderCards(event.cards); renderActivityLog(event.activity_log, event.undoable_batches); return; }
+    if (event.type === "recent")  { renderCards(event.cards); renderActivityLog(event.activity_log); return; }
     if (event.type === "session_start") {
       sessionActive = true;
       // Reload config so we pick up the new deck/model from whoever started the session
@@ -531,9 +535,9 @@ function connectSSE() {
       updateSessionUI();
       return;
     }
-    if (event.type === "done")    { logActivity(event.message, "done", event.batch_id); if (event.cards?.length) prependCards(event.cards, event.batch_id); return; }
+    if (event.type === "done")    { logActivity(event.message, "done"); if (event.cards?.length) prependCards(event.cards, event.batch_id); return; }
     if (event.type === "undo")   { logActivity(event.message, "done"); removeBatch(event.batch_id); return; }
-    if (event.type === "card_deleted") { removeCard(event.note_id); return; }
+    if (event.type === "card_deleted") { logActivity("Deleted card from Anki", "done"); removeCard(event.note_id); return; }
     if (event.type === "error")   { logActivity(event.message, "error"); return; }
     if (event.type === "progress") { logActivity(event.message, "progress"); }
   };
@@ -667,9 +671,8 @@ function reltime(ts) {
 }
 
 // ── Activity log ───────────────────────────────────────────────────────────
-function renderActivityLog(entries, undoableBatches) {
+function renderActivityLog(entries) {
   if (!entries || !entries.length) return;
-  const undoSet = new Set(undoableBatches || []);
   activityLog.innerHTML = "";
   // entries are newest-first from server
   for (const entry of entries) {
@@ -685,20 +688,11 @@ function renderActivityLog(entries, undoableBatches) {
     msgSpan.textContent = entry.message;
     li.appendChild(tsSpan);
     li.appendChild(msgSpan);
-    // Add undo button to "done" entries with undoable batch
-    if (entry.type === "done" && entry.batch_id && undoSet.has(entry.batch_id)) {
-      const btn = document.createElement("button");
-      btn.className = "log-undo-btn";
-      btn.dataset.batchId = entry.batch_id;
-      btn.textContent = "undo";
-      btn.addEventListener("click", () => undoBatch(entry.batch_id, btn));
-      li.appendChild(btn);
-    }
     activityLog.appendChild(li);
   }
 }
 
-function logActivity(message, type = "progress", batchId = null) {
+function logActivity(message, type = "progress") {
   if (activityLog.querySelector(".empty-state")) activityLog.innerHTML = "";
   const li = document.createElement("li");
   li.className = `log-${type}`;
@@ -711,15 +705,6 @@ function logActivity(message, type = "progress", batchId = null) {
   msgSpan.textContent = message;
   li.appendChild(tsSpan);
   li.appendChild(msgSpan);
-  // Add undo button for "done" entries with a batch_id
-  if (type === "done" && batchId) {
-    const btn = document.createElement("button");
-    btn.className = "log-undo-btn";
-    btn.dataset.batchId = batchId;
-    btn.textContent = "undo";
-    btn.addEventListener("click", () => undoBatch(batchId, btn));
-    li.appendChild(btn);
-  }
   activityLog.prepend(li);
   while (activityLog.children.length > 20) activityLog.removeChild(activityLog.lastChild);
 }

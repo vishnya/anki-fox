@@ -52,7 +52,7 @@ _batches_lock = threading.Lock()
 def _push_event(data: dict):
     # Persist log-worthy events for replay on reconnect
     etype = data.get("type", "")
-    if etype in ("progress", "done", "error", "undo"):
+    if etype in ("progress", "done", "error", "undo", "card_deleted"):
         entry = {
             "message": data.get("message", ""),
             "type":    etype,
@@ -225,7 +225,7 @@ def api_config_get():
 def api_config_post():
     data = request.get_json(force=True)
     conf = cfg.load()
-    for key in ("deck", "model", "api_keys", "custom_prompt", "deck_prompts"):
+    for key in ("deck", "model", "api_keys", "custom_prompt", "deck_prompts", "skip_delete_confirm"):
         if key in data:
             conf[key] = data[key]
     cfg.save(conf)
@@ -352,7 +352,7 @@ def api_delete_card():
                 if note_id in ids:
                     ids.remove(note_id)
                     break
-        _push_event({"type": "card_deleted", "note_id": note_id})
+        _push_event({"type": "card_deleted", "note_id": note_id, "message": "Deleted card from Anki"})
         return jsonify({"ok": True})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
