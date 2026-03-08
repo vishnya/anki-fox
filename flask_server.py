@@ -155,12 +155,17 @@ def _add_cards_to_anki(cards: list[dict], image_path: str, deck: str) -> dict:
     added = 0
     duplicates = 0
     note_ids = []
+
+    # If any card is flagged as an image card, attach the image to ALL cards
+    has_image = any(c.get("is_image_card") for c in cards)
+    if has_image:
+        fname = Path(image_path).name
+        b64   = models.encode_image(image_path)
+        _ankiconnect("storeMediaFile", filename=fname, data=b64)
+
     for card in cards:
         back = card["back"]
-        if card.get("is_image_card"):
-            fname = Path(image_path).name
-            b64   = models.encode_image(image_path)
-            _ankiconnect("storeMediaFile", filename=fname, data=b64)
+        if has_image:
             back += f'<br><img src="{fname}">'
 
         note = {

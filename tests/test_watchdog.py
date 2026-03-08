@@ -157,3 +157,40 @@ def test_processes_png_full_flow(tmp_config, tiny_png):
     assert len(done_events) == 1
     assert "2" in done_events[0]["message"]
     assert len(flask_server._recent_cards) == 2
+
+
+def test_image_attached_to_all_cards_when_any_is_image(tmp_config, tiny_png):
+    """If any card has is_image_card=True, ALL cards in the batch get the image."""
+    handler = ScreenshotHandler()
+    event = make_event(tiny_png)
+    conf = dict(tmp_config)
+    conf["session_active"] = True
+    conf["deck"] = "TestDeck"
+
+    fake_cards = [
+        {"front": "Q1", "back": "A1", "tags": [], "is_image_card": True},
+        {"front": "Q2", "back": "A2", "tags": [], "is_image_card": False},
+        {"front": "Q3", "back": "A3", "tags": [], "is_image_card": False},
+    ]
+
+    add_note_backs = []
+    def ankiconnect_side_effect(action, **params):
+        if action == "deckNames":
+            return ["TestDeck"]
+        if action == "storeMediaFile":
+            return None
+        if action == "addNote":
+            add_note_backs.append(params["note"]["fields"]["Back"])
+            return 12345
+        return None
+
+    with patch("flask_server.cfg.load", return_value=conf), \
+         patch("flask_server.models.generate_cards", return_value=fake_cards), \
+         patch("flask_server._ankiconnect", side_effect=ankiconnect_side_effect), \
+         patch("flask_server._push_event"), \
+         patch("time.sleep"):
+        handler.on_created(event)
+
+    assert len(add_note_backs) == 3
+    for back in add_note_backs:
+        assert "<img" in back, f"Expected image in all cards, but got: {back}"
