@@ -369,18 +369,16 @@ textarea {
 
 .btn-delete-card {
   font-size: 13px;
-  color: var(--muted);
+  color: var(--red, #e55);
   background: none;
   border: none;
   cursor: pointer;
   padding: 0 2px;
   flex-shrink: 0;
   line-height: 1;
-  opacity: 0;
-  transition: opacity 0.15s;
+  opacity: 0.7;
 }
-.cards-list li:hover .btn-delete-card { opacity: 0.6; }
-.btn-delete-card:hover { opacity: 1 !important; color: var(--red, #e55); }
+.btn-delete-card:hover { opacity: 1; }
 
 .card-meta {
   display: flex;
