@@ -310,7 +310,25 @@ textarea {
   text-transform: uppercase;
   letter-spacing: 0.5px;
   margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
+
+.btn-undo {
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: none;
+  color: var(--red, #e55);
+  background: none;
+  border: 1px solid var(--red, #e55);
+  border-radius: 4px;
+  padding: 2px 8px;
+  cursor: pointer;
+  letter-spacing: normal;
+}
+.btn-undo:hover { background: rgba(238, 85, 85, 0.1); }
+.btn-undo:disabled { opacity: 0.4; cursor: default; }
 
 .cards-list {
   list-style: none;

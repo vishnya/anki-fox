@@ -51,6 +51,7 @@ const stopBtn         = document.getElementById("btn-stop");
 const statusBanner    = document.getElementById("status-banner");
 const statusText      = document.getElementById("status-text");
 const cardsList       = document.getElementById("cards-list");
+const btnUndo         = document.getElementById("btn-undo");
 const activityLog     = document.getElementById("activity-log");
 const toast           = document.getElementById("toast");
 
@@ -135,7 +136,6 @@ btnRetryDecks.addEventListener("click", loadDecks);
 
 // ── Autosave ───────────────────────────────────────────────────────────────────
 async function saveConfig() {
-  if (sessionActive) return;
   const provider = providerSelect.value;
   const deck     = deckSelect.value;
   const prompt   = promptInput.value.trim();
@@ -448,6 +448,23 @@ stopBtn.addEventListener("click", async () => {
   updateSessionUI();
 });
 
+btnUndo.addEventListener("click", async () => {
+  btnUndo.disabled = true;
+  try {
+    const r = await fetch("/api/undo", { method: "POST" });
+    const data = await r.json();
+    if (r.ok) {
+      btnUndo.classList.add("hidden");
+    } else {
+      logActivity(data.error || "Undo failed", "error");
+    }
+  } catch {
+    logActivity("Undo failed — is Anki running?", "error");
+  } finally {
+    btnUndo.disabled = false;
+  }
+});
+
 // ── SSE ────────────────────────────────────────────────────────────────────────
 let _eventSource = null;
 
@@ -461,7 +478,8 @@ function connectSSE() {
 
     if (event.type === "ping")    return;
     if (event.type === "recent")  { renderCards(event.cards); return; }
-    if (event.type === "done")    { logActivity(event.message, "done"); if (event.cards?.length) prependCards(event.cards); return; }
+    if (event.type === "done")    { logActivity(event.message, "done"); if (event.cards?.length) { prependCards(event.cards); btnUndo.classList.remove("hidden"); } return; }
+    if (event.type === "undo")   { logActivity(event.message, "done"); btnUndo.classList.add("hidden"); renderCards([]); return; }
     if (event.type === "error")   { logActivity(event.message, "error"); return; }
     if (event.type === "progress") { logActivity(event.message, "progress"); }
   };

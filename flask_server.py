@@ -31,6 +31,10 @@ _sse_lock = threading.Lock()
 _recent_cards: list[dict] = []
 _recent_lock  = threading.Lock()
 
+# ── Undo: note IDs from the last screenshot ──────────────────────────────────────
+_last_note_ids: list[int] = []
+_last_note_lock = threading.Lock()
+
 
 def _push_event(data: dict):
     with _sse_lock:
@@ -123,6 +127,7 @@ def _add_cards_to_anki(cards: list[dict], image_path: str, deck: str) -> dict:
 
     added = 0
     duplicates = 0
+    note_ids = []
     for card in cards:
         back = card["back"]
         if card.get("is_image_card"):
@@ -139,12 +144,19 @@ def _add_cards_to_anki(cards: list[dict], image_path: str, deck: str) -> dict:
             "options":   {"allowDuplicate": False},
         }
         try:
-            _ankiconnect("addNote", note=note)
+            note_id = _ankiconnect("addNote", note=note)
+            if note_id:
+                note_ids.append(note_id)
             added += 1
         except Exception as e:
             if "duplicate" not in str(e).lower():
                 raise
             duplicates += 1
+
+    with _last_note_lock:
+        _last_note_ids.clear()
+        _last_note_ids.extend(note_ids)
+
     return {"added": added, "duplicates": duplicates}
 
 
@@ -261,6 +273,24 @@ def api_models(provider):
 
     except Exception:
         return jsonify([])
+
+
+@app.route("/api/undo", methods=["POST"])
+def api_undo():
+    with _last_note_lock:
+        ids = list(_last_note_ids)
+        _last_note_ids.clear()
+    if not ids:
+        return jsonify({"error": "Nothing to undo"}), 400
+    try:
+        _ankiconnect("deleteNotes", notes=ids)
+        # Also remove from recent cards list
+        with _recent_lock:
+            del _recent_cards[:len(ids)]
+        _push_event({"type": "undo", "message": f"Undid {len(ids)} card(s)", "count": len(ids)})
+        return jsonify({"ok": True, "deleted": len(ids)})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 @app.route("/api/session", methods=["GET"])
