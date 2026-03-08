@@ -39,12 +39,23 @@ BAD: front: "What is a model's vocabulary?" / back: "The set of all tokens a mod
 GOOD: front: "What is a model's vocabulary?" / back: "The fixed list of tokens it knows — every word, word-fragment, and symbol it can read or write. Words outside the vocabulary get broken into smaller pieces that are in it." — explains what a token is and includes the key insight about unknown words being split.
 
 If the screenshot contains a DIAGRAM, CHART, or FIGURE:
-- Generate one card with is_image_card: true for the diagram itself
-- Front: a specific conceptual question about what the diagram illustrates — not generic like "What does this diagram show?" but precise enough that someone could answer it cold, e.g. "What is the input/output flow of a multimodal model?" or "How does CLIP training work?"
-- Back: a full explanation of the diagram (the script will attach the image automatically)
-- If the screenshot also contains regular text or paragraphs outside the diagram, treat that content independently: generate additional text-based cards (is_image_card: false) for it. Do NOT lump everything into the single image card just because a diagram is present.
+- Break the diagram into multiple cards, each testing one concept shown in the diagram.
+- CRITICAL: the reviewer will NOT see the diagram when studying the front of the card. The front MUST be a standalone factual question that makes perfect sense without any image. Extract specific facts, numbers, or relationships from the diagram and ask about those directly.
+- NEVER reference the chart, diagram, figure, graph, or image on the front. Do not use phrases like "in the chart", "the chart shows", "when looking at the chart", "what does the diagram illustrate", or "what types does the chart distinguish". The front must read as a normal knowledge question.
+- Front: you can append "(Diagram)" at the end to signal a diagram is on the back.
+- DIAGRAM CARD EXAMPLES — study these carefully:
+  BAD: "What does the 'LLM Parameter Evolution' chart show about how models changed from 2018 to 2026? (Diagram)" — references the chart as something the user is looking at.
+  BAD: "When looking at a chart of LLM parameter evolution, what does it mean that the axis uses a log scale?" — the user cannot see any chart.
+  BAD: "What are the two main types of LLM architectures the chart distinguishes between?" — references the chart.
+  GOOD: "How many parameters did GPT-2 have, and when was it introduced? (Diagram)" / "1.5 billion parameters, introduced in February 2019."
+  GOOD: "What are the three stages of compilation? (Diagram)" / "Lexing, parsing, and code generation."
+- Back: a text explanation that fully answers the question. The diagram image is attached automatically, but the text must stand on its own.
+- Set is_image_card: true on ONE card so the image gets attached. The other cards from the same diagram should be is_image_card: false.
+- If the screenshot also contains regular text or paragraphs outside the diagram, generate additional cards for that content too.
 
-SELF-CHECK: before returning JSON, read each card and ask "would a smart 16-year-old understand this immediately?" If not, rewrite it until they would.
+SELF-CHECK: before returning JSON, read each card and ask:
+1. "Would a smart 16-year-old understand this immediately?" If not, rewrite it.
+2. For diagram cards: "Does the front make sense if the reader has NEVER seen the diagram?" If the front mentions the chart, graph, figure, or diagram in any way (other than the "(Diagram)" tag), rewrite it as a standalone factual question.
 
 Return ONLY valid JSON in this exact format, no other text:
 {
@@ -159,7 +170,7 @@ def _generate_anthropic(image_path: str, config: dict) -> list[dict]:
     client  = anthropic.Anthropic(api_key=api_key)
     message = client.messages.create(
         model=model_name,
-        max_tokens=2000,
+        max_tokens=4096,
         messages=[{
             "role": "user",
             "content": [
@@ -206,7 +217,7 @@ def _generate_openai_compat(image_path: str, config: dict) -> list[dict]:
     client   = OpenAI(**client_kwargs)
     create_kwargs: dict = {
         "model": model_name,
-        "max_tokens": 2000,
+        "max_tokens": 4096,
         "messages": [{
             "role": "user",
             "content": [
