@@ -64,7 +64,7 @@ If hotkeys stop working after granting permissions, click the Hammerspoon icon i
 | Hotkey | What it does |
 |--------|--------------|
 | `⌥⇧A` (Option + Shift + A) | Opens setup if no session is running. Takes a screenshot if one is. |
-| `⌥⇧⌘A` (Option + Shift + Cmd + A) | Stops the current session and reopens setup. |
+| `⌥⇧⌘A` (Option + Shift + Cmd + A) | Opens the setup page (useful if you closed the tab). |
 
 **Step by step:**
 
