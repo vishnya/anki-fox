@@ -13,6 +13,7 @@ from watchdog.observers import Observer
 
 import config as cfg
 import models
+import youtube
 
 ANKICONNECT_URL = "http://localhost:8765"
 SCREENSHOTS_DIR = Path.home() / "AnkiFox" / "incoming"
@@ -251,6 +252,13 @@ def _queue_worker():
         _process_queue()
 
 
+# ── YouTube video state ─────────────────────────────────────────────────────
+_video_lock = threading.Lock()
+_loaded_video: youtube.VideoMeta | None = None
+_extension_connected = False
+_extension_path = str(Path(__file__).parent / "extension")
+
+
 def _push_event(data: dict):
     # Persist log-worthy events for replay on reconnect
     etype = data.get("type", "")
@@ -348,9 +356,35 @@ class ScreenshotHandler(FileSystemEventHandler):
 
         conf["deck_context"] = fetch_deck_cards(deck)
 
+        # Video source: attach transcript context
+        source = conf.get("deck_sources", {}).get(deck, {}).get("source", "screen")
+        timestamp = None
+        if source == "video":
+            with _video_lock:
+                video = _loaded_video
+            if video and video.transcript:
+                ts = conf.get("deck_sources", {}).get(deck, {}).get("timestamp")
+                if ts is not None:
+                    timestamp = float(ts)
+                else:
+                    # Use end of transcript as fallback (latest point)
+                    timestamp = video.duration
+                chunk = youtube.get_transcript_chunk(video.transcript, timestamp)
+                if chunk:
+                    conf["transcript_context"] = chunk
+                    conf["timestamp"] = timestamp
+                    conf["video_title"] = video.title
+                    conf["video_id"] = video.video_id
+
         try:
             cards = models.generate_cards(path, conf)
             _push_event({"type": "progress", "message": f"{len(cards)} card(s) generated, adding to Anki..."})
+
+            # Add timestamp tag to video-sourced cards
+            if timestamp is not None:
+                ts_tag = f"yt-{youtube.format_timestamp(timestamp).replace(':', '')}"
+                for card in cards:
+                    card.setdefault("tags", []).append(ts_tag)
 
             result = _add_cards_to_anki(cards, path, deck)
             batch_id = result["batch_id"]
@@ -358,14 +392,18 @@ class ScreenshotHandler(FileSystemEventHandler):
             added_cards = [c for c in cards if c.get("note_id")]
             with _recent_lock:
                 for card in reversed(added_cards):
-                    _recent_cards.insert(0, {
+                    entry = {
                         "front":    card["front"],
                         "back":     card["back"],
                         "deck":     deck,
                         "ts":       time.time(),
                         "batch_id": batch_id,
                         "note_id":  card["note_id"],
-                    })
+                    }
+                    if timestamp is not None:
+                        entry["yt_timestamp"] = timestamp
+                        entry["video_id"] = conf.get("video_id", "")
+                    _recent_cards.insert(0, entry)
                 del _recent_cards[20:]  # keep last 20
                 _save_state()
 
@@ -463,7 +501,7 @@ def api_config_get():
 def api_config_post():
     data = request.get_json(force=True)
     conf = cfg.load()
-    for key in ("deck", "model", "api_keys", "custom_prompt", "deck_prompts", "skip_delete_confirm"):
+    for key in ("deck", "model", "api_keys", "custom_prompt", "deck_prompts", "deck_sources", "skip_delete_confirm"):
         if key in data:
             conf[key] = data[key]
     cfg.save(conf)
@@ -660,6 +698,58 @@ def api_connectivity():
     with _queue_lock:
         qc = len(_offline_queue)
     return jsonify({"online": online, "queue_count": qc})
+
+
+@app.route("/api/youtube/load", methods=["POST"])
+def api_youtube_load():
+    """Load a YouTube video's transcript and metadata."""
+    global _loaded_video
+    data = request.get_json(force=True)
+    url = data.get("url", "").strip()
+    if not url:
+        return jsonify({"error": "No URL provided"}), 400
+    try:
+        video = youtube.load_video(url)
+        with _video_lock:
+            _loaded_video = video
+        return jsonify(video.to_dict())
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+
+
+@app.route("/api/youtube/status")
+def api_youtube_status():
+    """Return currently loaded video info or null."""
+    with _video_lock:
+        if _loaded_video:
+            return jsonify(_loaded_video.to_dict())
+    return jsonify(None)
+
+
+@app.route("/api/youtube/clear", methods=["POST"])
+def api_youtube_clear():
+    """Clear the loaded video."""
+    global _loaded_video
+    with _video_lock:
+        _loaded_video = None
+    return jsonify({"ok": True})
+
+
+@app.route("/api/extension/hello", methods=["POST"])
+def api_extension_hello():
+    """Extension registration ping — marks extension as connected."""
+    global _extension_connected
+    _extension_connected = True
+    return jsonify({"ok": True})
+
+
+@app.route("/api/extension/status")
+def api_extension_status():
+    """Return extension connection status and install path."""
+    return jsonify({
+        "connected": _extension_connected,
+        "path": _extension_path,
+    })
 
 
 @app.route("/api/offline-queue")

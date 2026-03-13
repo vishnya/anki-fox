@@ -4,3 +4,4 @@ watchdog
 requests
 Pillow
 flask
+youtube-transcript-api

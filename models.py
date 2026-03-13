@@ -127,6 +127,30 @@ def _build_prompt(config: dict) -> str:
     if deck_context:
         prompt = prompt.replace("RULES:", deck_context + "RULES:", 1)
 
+    # Add transcript context if available (YouTube video mode)
+    transcript = config.get("transcript_context", "").strip()
+    if transcript:
+        timestamp = config.get("timestamp")
+        video_title = config.get("video_title", "")
+        ts_str = ""
+        if timestamp is not None:
+            total = int(timestamp)
+            m, s = divmod(total, 60)
+            h, m = divmod(m, 60)
+            ts_str = f"{h}:{m:02d}:{s:02d}" if h else f"{m}:{s:02d}"
+        header = "TRANSCRIPT CONTEXT"
+        if ts_str:
+            header += f" (around timestamp {ts_str})"
+        if video_title:
+            header += f" from \"{video_title}\""
+        header += ":\n"
+        transcript_block = (
+            f"{header}{transcript}\n\n"
+            f"Use this transcript alongside the screenshot to generate accurate cards. "
+            f"The transcript provides spoken context that may clarify or supplement what's visible in the screenshot.\n\n"
+        )
+        prompt = prompt.replace("RULES:", transcript_block + "RULES:", 1)
+
     custom = config.get("custom_prompt", "").strip()
     if not custom:
         return prompt

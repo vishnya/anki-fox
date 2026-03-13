@@ -42,6 +42,51 @@
     </div>
   </div>
 
+  <!-- Source selector (collapsible) -->
+  <details class="source-details" id="source-details">
+    <summary id="source-summary">Source: <span id="source-summary-text">Screen</span></summary>
+    <div class="source-inner">
+      <div class="source-pills">
+        <button type="button" class="source-pill active" data-source="screen">Screen</button>
+        <button type="button" class="source-pill" data-source="video">Video</button>
+      </div>
+      <div class="source-video-config hidden" id="source-video-config">
+        <div class="field">
+          <label for="youtube-url">YouTube URL</label>
+          <div class="youtube-url-row">
+            <input type="url" id="youtube-url" placeholder="https://youtube.com/watch?v=..." autocomplete="off" spellcheck="false">
+            <button type="button" id="btn-load-video" class="btn-icon">Load</button>
+          </div>
+        </div>
+        <div class="video-info hidden" id="video-info">
+          <div class="video-title" id="video-title"></div>
+          <div class="video-meta" id="video-meta"></div>
+        </div>
+        <!-- Extension setup banner -->
+        <div class="extension-banner hidden" id="extension-banner">
+          <div class="extension-banner-title">Chrome extension needed for exact timestamps</div>
+          <p class="extension-banner-text">
+            Without the extension, anki-fox can fetch the transcript but won't know
+            <em>where</em> in the video you pressed the hotkey. The extension reads
+            the exact playback position from the YouTube tab so cards get the right
+            transcript context.
+          </p>
+          <ol class="extension-steps">
+            <li>Open <code>chrome://extensions</code></li>
+            <li>Enable "Developer mode" (top right)</li>
+            <li>Click "Load unpacked"</li>
+            <li>Select the <code>extension/</code> folder inside anki-fox</li>
+          </ol>
+          <div class="extension-banner-actions">
+            <button type="button" id="btn-copy-ext-path" class="btn-icon">Copy path</button>
+            <button type="button" id="btn-ext-skip" class="btn-icon">Skip</button>
+            <button type="button" id="btn-ext-done" class="btn-icon">I did it</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </details>
+
   <!-- Model settings (collapsible) -->
   <details class="model-details" id="model-details">
     <summary id="model-summary">Model: <span id="model-summary-text">Claude claude-sonnet-4-6</span></summary>

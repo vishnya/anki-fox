@@ -22,11 +22,15 @@ def clear_flask_state(tmp_path, monkeypatch):
     flask_server._activity_log.clear()
     flask_server._batches.clear()
     flask_server._offline_queue.clear()
+    flask_server._loaded_video = None
+    flask_server._extension_connected = False
     yield
     flask_server._recent_cards.clear()
     flask_server._activity_log.clear()
     flask_server._batches.clear()
     flask_server._offline_queue.clear()
+    flask_server._loaded_video = None
+    flask_server._extension_connected = False
 
 
 @pytest.fixture
