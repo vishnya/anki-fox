@@ -255,6 +255,8 @@ def _queue_worker():
 # ── YouTube video state ─────────────────────────────────────────────────────
 _video_lock = threading.Lock()
 _loaded_video: youtube.VideoMeta | None = None
+_extension_connected = False
+_extension_path = str(Path(__file__).parent / "extension")
 
 
 def _push_event(data: dict):
@@ -731,6 +733,23 @@ def api_youtube_clear():
     with _video_lock:
         _loaded_video = None
     return jsonify({"ok": True})
+
+
+@app.route("/api/extension/hello", methods=["POST"])
+def api_extension_hello():
+    """Extension registration ping — marks extension as connected."""
+    global _extension_connected
+    _extension_connected = True
+    return jsonify({"ok": True})
+
+
+@app.route("/api/extension/status")
+def api_extension_status():
+    """Return extension connection status and install path."""
+    return jsonify({
+        "connected": _extension_connected,
+        "path": _extension_path,
+    })
 
 
 @app.route("/api/offline-queue")

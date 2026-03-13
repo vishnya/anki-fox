@@ -1,4 +1,4 @@
-"""Tests for YouTube transcript module and YouTube-related API endpoints."""
+"""Tests for YouTube transcript module, extension, and YouTube-related API endpoints."""
 
 import json
 import pytest
@@ -42,6 +42,18 @@ class TestExtractVideoId:
 
     def test_v_url_format(self):
         assert youtube.extract_video_id("https://youtube.com/v/dQw4w9WgXcQ") == "dQw4w9WgXcQ"
+
+    def test_http_url(self):
+        assert youtube.extract_video_id("http://www.youtube.com/watch?v=dQw4w9WgXcQ") == "dQw4w9WgXcQ"
+
+    def test_url_with_playlist_param(self):
+        assert youtube.extract_video_id("https://www.youtube.com/watch?v=dQw4w9WgXcQ&list=PLrAXtmErZgOeiKm4sgNOknGvNjby9efdf") == "dQw4w9WgXcQ"
+
+    def test_too_short_id_returns_none(self):
+        assert youtube.extract_video_id("abc") is None
+
+    def test_too_long_id_returns_none(self):
+        assert youtube.extract_video_id("abcdefghijklm") is None
 
 
 class TestGetTranscriptChunk:
@@ -92,6 +104,22 @@ class TestGetTranscriptChunk:
         chunk = youtube.get_transcript_chunk(sample_transcript, 90.0, window=5.0)
         assert chunk == ""
 
+    def test_wide_window_captures_all(self, sample_transcript):
+        chunk = youtube.get_transcript_chunk(sample_transcript, 60.0, window=200.0)
+        assert "Hello everyone" in chunk
+        assert "thanks for watching" in chunk
+
+    def test_segment_at_boundary_included(self, sample_transcript):
+        # Segment starts at 30.0, window [29.0, 31.0] should include it
+        chunk = youtube.get_transcript_chunk(sample_transcript, 30.0, window=1.0)
+        assert "now let us discuss calculus" in chunk
+
+    def test_custom_window_size(self, sample_transcript):
+        chunk = youtube.get_transcript_chunk(sample_transcript, 60.0, window=5.0)
+        assert "derivatives measure change" in chunk
+        # 64s is in range [55, 65]
+        assert "integrals are the reverse" in chunk
+
 
 class TestFormatTimestamp:
     """Test timestamp formatting."""
@@ -110,6 +138,18 @@ class TestFormatTimestamp:
 
     def test_float_truncated(self):
         assert youtube.format_timestamp(90.7) == "1:30"
+
+    def test_exactly_one_hour(self):
+        assert youtube.format_timestamp(3600) == "1:00:00"
+
+    def test_large_value(self):
+        assert youtube.format_timestamp(7384) == "2:03:04"
+
+    def test_single_digit_seconds(self):
+        assert youtube.format_timestamp(5) == "0:05"
+
+    def test_sixty_seconds(self):
+        assert youtube.format_timestamp(60) == "1:00"
 
 
 class TestVideoMeta:
@@ -135,6 +175,25 @@ class TestVideoMeta:
         assert d["transcript_loaded"] is False
         assert d["segment_count"] == 0
 
+    def test_to_dict_multiple_segments(self):
+        meta = youtube.VideoMeta(
+            video_id="x", title="T",
+            transcript=[
+                {"text": "a", "start": 0, "duration": 1},
+                {"text": "b", "start": 1, "duration": 1},
+                {"text": "c", "start": 2, "duration": 1},
+            ],
+        )
+        assert meta.to_dict()["segment_count"] == 3
+
+    def test_default_duration(self):
+        meta = youtube.VideoMeta(video_id="x", title="T")
+        assert meta.duration == 0.0
+
+    def test_default_transcript(self):
+        meta = youtube.VideoMeta(video_id="x", title="T")
+        assert meta.transcript == []
+
 
 class TestFetchTranscript:
     """Test transcript fetching (mocked)."""
@@ -155,12 +214,21 @@ class TestFetchTranscript:
             result = youtube.fetch_transcript("abc123")
         assert len(result) == 2
         assert result[0]["text"] == "Hello"
+        assert result[0]["start"] == 0.0
+        assert result[0]["duration"] == 3.0
         assert result[1]["start"] == 3.0
 
     def test_fetch_transcript_not_installed(self):
         with patch.object(youtube, "HAS_TRANSCRIPT_API", False):
             with pytest.raises(ImportError, match="youtube-transcript-api"):
                 youtube.fetch_transcript("abc123")
+
+    def test_fetch_transcript_empty(self):
+        mock_api = MagicMock()
+        mock_api.fetch.return_value = []
+        with patch("youtube.YouTubeTranscriptApi", return_value=mock_api):
+            result = youtube.fetch_transcript("abc123")
+        assert result == []
 
 
 class TestFetchVideoTitle:
@@ -178,6 +246,15 @@ class TestFetchVideoTitle:
     def test_title_failure_returns_video_id(self):
         import requests as req_mod
         with patch.object(req_mod, "get", side_effect=Exception("network")):
+            title = youtube.fetch_video_title("abc123")
+        assert title == "abc123"
+
+    def test_title_missing_key_returns_video_id(self):
+        mock_resp = MagicMock()
+        mock_resp.json.return_value = {}
+        mock_resp.raise_for_status = MagicMock()
+        import requests as req_mod
+        with patch.object(req_mod, "get", return_value=mock_resp):
             title = youtube.fetch_video_title("abc123")
         assert title == "abc123"
 
@@ -209,6 +286,32 @@ class TestLoadVideo:
         assert video.duration == 5.0
         assert len(video.transcript) == 2
 
+    def test_load_video_empty_transcript(self):
+        mock_api = MagicMock()
+        mock_api.fetch.return_value = []
+        with patch("youtube.YouTubeTranscriptApi", return_value=mock_api), \
+             patch("youtube.fetch_video_title", return_value="No Subs"):
+            video = youtube.load_video("https://youtube.com/watch?v=dQw4w9WgXcQ")
+        assert video.duration == 0.0
+        assert len(video.transcript) == 0
+
+    def test_load_video_computes_duration_from_last_segment(self):
+        @dataclass
+        class MockSegment:
+            text: str
+            start: float
+            duration: float
+
+        mock_api = MagicMock()
+        mock_api.fetch.return_value = [
+            MockSegment(text="One", start=0.0, duration=10.0),
+            MockSegment(text="Two", start=100.0, duration=5.0),
+        ]
+        with patch("youtube.YouTubeTranscriptApi", return_value=mock_api), \
+             patch("youtube.fetch_video_title", return_value="T"):
+            video = youtube.load_video("dQw4w9WgXcQ")
+        assert video.duration == 105.0
+
 
 # ── Flask API endpoint tests ──────────────────────────────────────────────────
 
@@ -235,9 +338,14 @@ class TestYouTubeLoadEndpoint:
         assert data["video_id"] == "dQw4w9WgXcQ"
         assert data["title"] == "My Video"
         assert data["transcript_loaded"] is True
+        assert data["segment_count"] == 1
 
     def test_load_no_url(self, flask_client):
         resp = flask_client.post("/api/youtube/load", json={"url": ""})
+        assert resp.status_code == 400
+
+    def test_load_missing_url_key(self, flask_client):
+        resp = flask_client.post("/api/youtube/load", json={})
         assert resp.status_code == 400
 
     def test_load_invalid_url(self, flask_client):
@@ -250,6 +358,29 @@ class TestYouTubeLoadEndpoint:
             resp = flask_client.post("/api/youtube/load", json={"url": "https://youtube.com/watch?v=abc12345678"})
         assert resp.status_code == 400
         assert "error" in resp.get_json()
+
+    def test_load_replaces_previous_video(self, flask_client):
+        """Loading a new video replaces the previous one."""
+        @dataclass
+        class MockSegment:
+            text: str
+            start: float
+            duration: float
+
+        mock_api = MagicMock()
+        mock_api.fetch.return_value = [MockSegment(text="First", start=0.0, duration=1.0)]
+        with patch("youtube.YouTubeTranscriptApi", return_value=mock_api), \
+             patch("youtube.fetch_video_title", return_value="Video 1"):
+            flask_client.post("/api/youtube/load", json={"url": "https://youtube.com/watch?v=aaaaaaaaaaa"})
+
+        mock_api.fetch.return_value = [MockSegment(text="Second", start=0.0, duration=1.0)]
+        with patch("youtube.YouTubeTranscriptApi", return_value=mock_api), \
+             patch("youtube.fetch_video_title", return_value="Video 2"):
+            flask_client.post("/api/youtube/load", json={"url": "https://youtube.com/watch?v=bbbbbbbbbbb"})
+
+        status = flask_client.get("/api/youtube/status").get_json()
+        assert status["video_id"] == "bbbbbbbbbbb"
+        assert status["title"] == "Video 2"
 
 
 class TestYouTubeStatusEndpoint:
@@ -270,6 +401,18 @@ class TestYouTubeStatusEndpoint:
         data = resp.get_json()
         assert data["video_id"] == "abc123"
         assert data["transcript_loaded"] is True
+        assert data["duration"] == 60.0
+
+    def test_status_returns_all_fields(self, flask_client):
+        flask_server._loaded_video = youtube.VideoMeta(
+            video_id="xyz789", title="Full Test", duration=300.0,
+            transcript=[
+                {"text": "a", "start": 0, "duration": 1},
+                {"text": "b", "start": 1, "duration": 1},
+            ],
+        )
+        data = flask_client.get("/api/youtube/status").get_json()
+        assert set(data.keys()) == {"video_id", "title", "duration", "transcript_loaded", "segment_count"}
 
 
 class TestYouTubeClearEndpoint:
@@ -280,6 +423,61 @@ class TestYouTubeClearEndpoint:
         resp = flask_client.post("/api/youtube/clear")
         assert resp.status_code == 200
         assert flask_server._loaded_video is None
+
+    def test_clear_when_already_none(self, flask_client):
+        flask_server._loaded_video = None
+        resp = flask_client.post("/api/youtube/clear")
+        assert resp.status_code == 200
+        assert flask_server._loaded_video is None
+
+    def test_clear_then_status_returns_none(self, flask_client):
+        flask_server._loaded_video = youtube.VideoMeta(video_id="abc", title="T")
+        flask_client.post("/api/youtube/clear")
+        data = flask_client.get("/api/youtube/status").get_json()
+        assert data is None
+
+
+# ── Extension endpoint tests ─────────────────────────────────────────────────
+
+
+class TestExtensionHello:
+    """Test POST /api/extension/hello."""
+
+    def test_hello_marks_connected(self, flask_client):
+        flask_server._extension_connected = False
+        resp = flask_client.post("/api/extension/hello")
+        assert resp.status_code == 200
+        assert resp.get_json()["ok"] is True
+        assert flask_server._extension_connected is True
+
+    def test_hello_idempotent(self, flask_client):
+        flask_server._extension_connected = True
+        resp = flask_client.post("/api/extension/hello")
+        assert resp.status_code == 200
+        assert flask_server._extension_connected is True
+
+
+class TestExtensionStatus:
+    """Test GET /api/extension/status."""
+
+    def test_status_not_connected(self, flask_client):
+        flask_server._extension_connected = False
+        resp = flask_client.get("/api/extension/status")
+        assert resp.status_code == 200
+        data = resp.get_json()
+        assert data["connected"] is False
+        assert "path" in data
+
+    def test_status_connected(self, flask_client):
+        flask_server._extension_connected = True
+        resp = flask_client.get("/api/extension/status")
+        data = resp.get_json()
+        assert data["connected"] is True
+
+    def test_status_returns_extension_path(self, flask_client):
+        resp = flask_client.get("/api/extension/status")
+        data = resp.get_json()
+        assert "extension" in data["path"]
 
 
 # ── Config deck_sources tests ─────────────────────────────────────────────────
@@ -309,6 +507,27 @@ class TestDeckSources:
         })
         conf = flask_client.get("/api/config").get_json()
         assert conf["deck_sources"] == {}
+
+    def test_multiple_decks_different_sources(self, flask_client):
+        flask_client.post("/api/config", json={
+            "deck_sources": {
+                "Bio": {"source": "video", "youtube_url": "https://youtube.com/watch?v=aaa"},
+                "Math": {"source": "screen"},
+            },
+        })
+        conf = flask_client.get("/api/config").get_json()
+        assert conf["deck_sources"]["Bio"]["source"] == "video"
+        assert conf["deck_sources"]["Math"]["source"] == "screen"
+
+    def test_deck_sources_preserved_on_other_config_update(self, flask_client):
+        flask_client.post("/api/config", json={
+            "deck_sources": {"Bio": {"source": "video"}},
+        })
+        flask_client.post("/api/config", json={
+            "deck": "Chemistry",
+        })
+        conf = flask_client.get("/api/config").get_json()
+        assert conf["deck_sources"]["Bio"]["source"] == "video"
 
 
 # ── models.py transcript context tests ────────────────────────────────────────
@@ -385,6 +604,44 @@ class TestBuildPromptWithTranscript:
         assert "EXISTING CARDS" in prompt
         assert "neural networks" in prompt
 
+    def test_transcript_no_timestamp(self):
+        """Transcript without timestamp should still work."""
+        prompt = models._build_prompt({
+            "custom_prompt": "",
+            "transcript_context": "some lecture content here",
+        })
+        assert "TRANSCRIPT CONTEXT" in prompt
+        assert "some lecture content here" in prompt
+        # No timestamp should mean no "(around timestamp ...)" in header
+        assert "around timestamp" not in prompt
+
+    def test_transcript_with_zero_timestamp(self):
+        prompt = models._build_prompt({
+            "custom_prompt": "",
+            "transcript_context": "intro content",
+            "timestamp": 0.0,
+        })
+        assert "around timestamp 0:00" in prompt
+
+    def test_transcript_ordering_with_all_contexts(self):
+        """Verify ordering: deck context, transcript, custom prompt all before RULES."""
+        prompt = models._build_prompt({
+            "custom_prompt": "Focus on details",
+            "transcript_context": "lecture audio text",
+            "timestamp": 10.0,
+            "deck_context": [
+                {"front": "Q1?", "back": "A1", "tags": []},
+            ],
+        })
+        rules_pos = prompt.index("RULES:")
+        transcript_pos = prompt.index("TRANSCRIPT CONTEXT")
+        deck_pos = prompt.index("EXISTING CARDS")
+        custom_pos = prompt.index("Focus on details")
+        # All should be before RULES
+        assert deck_pos < rules_pos
+        assert transcript_pos < rules_pos
+        assert custom_pos < rules_pos
+
 
 # ── Screenshot handler with video source tests ────────────────────────────────
 
@@ -431,6 +688,8 @@ class TestScreenshotHandlerVideoSource:
             assert "transcript_context" in call_conf
             assert "biology" in call_conf["transcript_context"]
             assert call_conf["video_id"] == "test123"
+            assert call_conf["video_title"] == "Test Lecture"
+            assert call_conf["timestamp"] == 120.0  # fallback to duration
 
     def test_screen_source_no_transcript(self, flask_client, tiny_png, mock_ankiconnect):
         """When source=screen, no transcript context is passed."""
@@ -456,6 +715,122 @@ class TestScreenshotHandlerVideoSource:
             assert mock_gen.called
             call_conf = mock_gen.call_args[0][1]
             assert "transcript_context" not in call_conf
+
+    def test_video_source_no_video_loaded(self, flask_client, tiny_png, mock_ankiconnect):
+        """When source=video but no video loaded, no transcript context."""
+        import config as cfg
+
+        conf = cfg.load()
+        conf["session_active"] = True
+        conf["deck"] = "TestDeck"
+        conf["deck_sources"] = {"TestDeck": {"source": "video"}}
+        conf["api_keys"] = {"anthropic": "sk-test"}
+        cfg.save(conf)
+
+        flask_server._loaded_video = None
+
+        cards = [{"front": "Q?", "back": "A", "tags": [], "is_image_card": False}]
+
+        with patch("models.generate_cards", return_value=cards) as mock_gen, \
+             patch("time.sleep"):
+            handler = flask_server.ScreenshotHandler()
+            event = MagicMock()
+            event.is_directory = False
+            event.src_path = tiny_png
+            handler.on_created(event)
+
+            assert mock_gen.called
+            call_conf = mock_gen.call_args[0][1]
+            assert "transcript_context" not in call_conf
+
+    def test_video_source_empty_transcript(self, flask_client, tiny_png, mock_ankiconnect):
+        """When source=video but transcript is empty, no transcript context."""
+        import config as cfg
+
+        conf = cfg.load()
+        conf["session_active"] = True
+        conf["deck"] = "TestDeck"
+        conf["deck_sources"] = {"TestDeck": {"source": "video"}}
+        conf["api_keys"] = {"anthropic": "sk-test"}
+        cfg.save(conf)
+
+        flask_server._loaded_video = youtube.VideoMeta(
+            video_id="test123", title="Empty", duration=0, transcript=[],
+        )
+
+        cards = [{"front": "Q?", "back": "A", "tags": [], "is_image_card": False}]
+
+        with patch("models.generate_cards", return_value=cards) as mock_gen, \
+             patch("time.sleep"):
+            handler = flask_server.ScreenshotHandler()
+            event = MagicMock()
+            event.is_directory = False
+            event.src_path = tiny_png
+            handler.on_created(event)
+
+            assert mock_gen.called
+            call_conf = mock_gen.call_args[0][1]
+            assert "transcript_context" not in call_conf
+
+    def test_video_source_adds_timestamp_tag(self, flask_client, tiny_png, mock_ankiconnect):
+        """Cards from video source get yt-timestamp tags."""
+        import config as cfg
+
+        conf = cfg.load()
+        conf["session_active"] = True
+        conf["deck"] = "TestDeck"
+        conf["deck_sources"] = {"TestDeck": {"source": "video"}}
+        conf["api_keys"] = {"anthropic": "sk-test"}
+        cfg.save(conf)
+
+        flask_server._loaded_video = youtube.VideoMeta(
+            video_id="test123", title="T", duration=65.0,
+            transcript=[{"text": "content here", "start": 40.0, "duration": 5.0}],
+        )
+
+        cards = [{"front": "Q?", "back": "A", "tags": ["topic"], "is_image_card": False}]
+
+        with patch("models.generate_cards", return_value=cards), \
+             patch("time.sleep"):
+            handler = flask_server.ScreenshotHandler()
+            event = MagicMock()
+            event.is_directory = False
+            event.src_path = tiny_png
+            handler.on_created(event)
+
+            # Check the cards had a yt tag added
+            assert any(t.startswith("yt-") for t in cards[0]["tags"])
+
+    def test_video_source_stores_yt_timestamp_in_recent(self, flask_client, tiny_png, mock_ankiconnect):
+        """Recent cards from video source include yt_timestamp and video_id."""
+        import config as cfg
+
+        conf = cfg.load()
+        conf["session_active"] = True
+        conf["deck"] = "TestDeck"
+        conf["deck_sources"] = {"TestDeck": {"source": "video"}}
+        conf["api_keys"] = {"anthropic": "sk-test"}
+        cfg.save(conf)
+
+        flask_server._loaded_video = youtube.VideoMeta(
+            video_id="vid456", title="T", duration=100.0,
+            transcript=[{"text": "content", "start": 75.0, "duration": 5.0}],
+        )
+
+        cards = [{"front": "Q?", "back": "A", "tags": [], "is_image_card": False}]
+
+        with patch("models.generate_cards", return_value=cards), \
+             patch("time.sleep"):
+            handler = flask_server.ScreenshotHandler()
+            event = MagicMock()
+            event.is_directory = False
+            event.src_path = tiny_png
+            handler.on_created(event)
+
+        assert len(flask_server._recent_cards) > 0
+        card = flask_server._recent_cards[0]
+        assert "yt_timestamp" in card
+        assert card["video_id"] == "vid456"
 
 
 # ── HTML UI element tests ─────────────────────────────────────────────────────
@@ -486,5 +861,120 @@ class TestSourceSelectorHTML:
 
     def test_video_config_hidden_by_default(self, flask_client):
         html = flask_client.get("/").data.decode()
-        # The source-video-config div should have the hidden class
         assert 'class="source-video-config hidden"' in html
+
+    def test_contains_extension_banner(self, flask_client):
+        html = flask_client.get("/").data.decode()
+        assert 'id="extension-banner"' in html
+        assert "Chrome extension needed" in html
+
+    def test_extension_banner_hidden_by_default(self, flask_client):
+        html = flask_client.get("/").data.decode()
+        assert 'class="extension-banner hidden"' in html
+
+    def test_contains_extension_setup_steps(self, flask_client):
+        html = flask_client.get("/").data.decode()
+        assert "chrome://extensions" in html
+        assert "Developer mode" in html
+        assert "Load unpacked" in html
+
+    def test_contains_extension_action_buttons(self, flask_client):
+        html = flask_client.get("/").data.decode()
+        assert 'id="btn-copy-ext-path"' in html
+        assert 'id="btn-ext-skip"' in html
+        assert 'id="btn-ext-done"' in html
+
+    def test_extension_explains_why_needed(self, flask_client):
+        html = flask_client.get("/").data.decode()
+        assert "exact playback position" in html or "exact timestamps" in html
+
+
+# ── Extension file tests ─────────────────────────────────────────────────────
+
+
+class TestExtensionFiles:
+    """Verify the Chrome extension files exist and are valid."""
+
+    def test_manifest_exists(self):
+        from pathlib import Path
+        manifest = Path(__file__).parent.parent / "extension" / "manifest.json"
+        assert manifest.exists()
+
+    def test_manifest_valid_json(self):
+        from pathlib import Path
+        manifest = Path(__file__).parent.parent / "extension" / "manifest.json"
+        data = json.loads(manifest.read_text())
+        assert data["manifest_version"] == 3
+        assert "anki-fox" in data["name"].lower()
+
+    def test_manifest_has_content_scripts(self):
+        from pathlib import Path
+        manifest = Path(__file__).parent.parent / "extension" / "manifest.json"
+        data = json.loads(manifest.read_text())
+        assert len(data["content_scripts"]) > 0
+        assert "*://*.youtube.com/*" in data["content_scripts"][0]["matches"]
+
+    def test_manifest_externally_connectable(self):
+        from pathlib import Path
+        manifest = Path(__file__).parent.parent / "extension" / "manifest.json"
+        data = json.loads(manifest.read_text())
+        origins = data["externally_connectable"]["origins"]
+        assert any("localhost:5789" in o for o in origins)
+
+    def test_content_js_exists(self):
+        from pathlib import Path
+        content = Path(__file__).parent.parent / "extension" / "content.js"
+        assert content.exists()
+
+    def test_content_js_handles_messages(self):
+        from pathlib import Path
+        content = Path(__file__).parent.parent / "extension" / "content.js"
+        js = content.read_text()
+        assert "onMessageExternal" in js
+        assert "anki-fox-get-timestamp" in js
+        assert "currentTime" in js
+
+
+# ── Integration: Load → Status → Clear lifecycle ─────────────────────────────
+
+
+class TestYouTubeLifecycle:
+    """Integration test for the full YouTube load/status/clear lifecycle."""
+
+    def test_load_status_clear_lifecycle(self, flask_client):
+        @dataclass
+        class MockSegment:
+            text: str
+            start: float
+            duration: float
+
+        # Initially no video
+        assert flask_client.get("/api/youtube/status").get_json() is None
+
+        # Load a video
+        mock_api = MagicMock()
+        mock_api.fetch.return_value = [
+            MockSegment(text="Hello", start=0.0, duration=3.0),
+            MockSegment(text="World", start=3.0, duration=2.0),
+        ]
+        with patch("youtube.YouTubeTranscriptApi", return_value=mock_api), \
+             patch("youtube.fetch_video_title", return_value="Lifecycle Test"):
+            resp = flask_client.post("/api/youtube/load", json={"url": "https://youtube.com/watch?v=dQw4w9WgXcQ"})
+        assert resp.status_code == 200
+
+        # Status should show loaded video
+        status = flask_client.get("/api/youtube/status").get_json()
+        assert status["video_id"] == "dQw4w9WgXcQ"
+        assert status["title"] == "Lifecycle Test"
+        assert status["transcript_loaded"] is True
+        assert status["segment_count"] == 2
+
+        # Clear
+        flask_client.post("/api/youtube/clear")
+        assert flask_client.get("/api/youtube/status").get_json() is None
+
+    def test_extension_hello_then_status(self, flask_client):
+        flask_server._extension_connected = False
+        assert flask_client.get("/api/extension/status").get_json()["connected"] is False
+        flask_client.post("/api/extension/hello")
+        assert flask_client.get("/api/extension/status").get_json()["connected"] is True

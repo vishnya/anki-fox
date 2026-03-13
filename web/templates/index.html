@@ -62,6 +62,27 @@
           <div class="video-title" id="video-title"></div>
           <div class="video-meta" id="video-meta"></div>
         </div>
+        <!-- Extension setup banner -->
+        <div class="extension-banner hidden" id="extension-banner">
+          <div class="extension-banner-title">Chrome extension needed for exact timestamps</div>
+          <p class="extension-banner-text">
+            Without the extension, anki-fox can fetch the transcript but won't know
+            <em>where</em> in the video you pressed the hotkey. The extension reads
+            the exact playback position from the YouTube tab so cards get the right
+            transcript context.
+          </p>
+          <ol class="extension-steps">
+            <li>Open <code>chrome://extensions</code></li>
+            <li>Enable "Developer mode" (top right)</li>
+            <li>Click "Load unpacked"</li>
+            <li>Select the <code>extension/</code> folder inside anki-fox</li>
+          </ol>
+          <div class="extension-banner-actions">
+            <button type="button" id="btn-copy-ext-path" class="btn-icon">Copy path</button>
+            <button type="button" id="btn-ext-skip" class="btn-icon">Skip</button>
+            <button type="button" id="btn-ext-done" class="btn-icon">I did it</button>
+          </div>
+        </div>
       </div>
     </div>
   </details>

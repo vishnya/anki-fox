@@ -243,6 +243,54 @@ textarea {
 
 .yt-badge:hover { opacity: 1; }
 
+/* ── Extension setup banner ── */
+.extension-banner {
+  margin-top: 10px;
+  padding: 10px 12px;
+  background: rgba(74, 158, 255, 0.08);
+  border: 1px solid rgba(74, 158, 255, 0.25);
+  border-radius: var(--radius);
+  font-size: 12px;
+}
+
+.extension-banner-title {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--accent);
+  margin-bottom: 6px;
+}
+
+.extension-banner-text {
+  color: var(--muted);
+  margin: 0 0 8px;
+  line-height: 1.5;
+}
+
+.extension-banner-text em {
+  color: var(--text);
+  font-style: italic;
+}
+
+.extension-steps {
+  margin: 0 0 10px;
+  padding-left: 20px;
+  color: var(--text);
+  line-height: 1.7;
+}
+
+.extension-steps code {
+  background: var(--surface);
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 11px;
+}
+
+.extension-banner-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
 /* ── Model details ── */
 .model-details {
   margin-bottom: 14px;

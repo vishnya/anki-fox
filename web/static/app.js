@@ -63,6 +63,10 @@ const videoInfo         = document.getElementById("video-info");
 const videoTitle        = document.getElementById("video-title");
 const videoMetaEl       = document.getElementById("video-meta");
 const sourcePills       = document.querySelectorAll(".source-pill");
+const extensionBanner   = document.getElementById("extension-banner");
+const btnCopyExtPath    = document.getElementById("btn-copy-ext-path");
+const btnExtSkip        = document.getElementById("btn-ext-skip");
+const btnExtDone        = document.getElementById("btn-ext-done");
 
 // ── State ──────────────────────────────────────────────────────────────────────
 let config        = null;
@@ -116,8 +120,11 @@ function loadSourceForDeck(deck) {
     youtubeUrlInput.value = url;
     // Check if video is loaded on server
     loadVideoStatus();
+    // Show extension banner if not connected
+    checkExtensionStatus();
   } else {
     sourceVideoConfig.classList.add("hidden");
+    extensionBanner.classList.add("hidden");
   }
 }
 
@@ -179,6 +186,46 @@ btnLoadVideo.addEventListener("click", async () => {
   } catch { showToast("Failed to load video", true); }
   btnLoadVideo.disabled = false;
   btnLoadVideo.textContent = "Load";
+});
+
+// ── Extension setup banner ─────────────────────────────────────────────────────
+let _extensionSkipped = false;
+let _extensionPath = "";
+
+async function checkExtensionStatus() {
+  if (_extensionSkipped) return;
+  try {
+    const res = await fetch("/api/extension/status");
+    const data = await res.json();
+    _extensionPath = data.path || "";
+    if (data.connected) {
+      extensionBanner.classList.add("hidden");
+    } else if (currentSource === "video") {
+      extensionBanner.classList.remove("hidden");
+    }
+  } catch { /* ignore */ }
+}
+
+btnCopyExtPath.addEventListener("click", () => {
+  navigator.clipboard.writeText(_extensionPath).then(
+    () => showToast("Path copied"),
+    () => showToast("Copy failed", true),
+  );
+});
+
+btnExtSkip.addEventListener("click", () => {
+  _extensionSkipped = true;
+  extensionBanner.classList.add("hidden");
+});
+
+btnExtDone.addEventListener("click", async () => {
+  try {
+    await fetch("/api/extension/hello", { method: "POST" });
+    extensionBanner.classList.add("hidden");
+    showToast("Extension connected");
+  } catch {
+    showToast("Could not verify extension", true);
+  }
 });
 
 // ── Init ───────────────────────────────────────────────────────────────────────
