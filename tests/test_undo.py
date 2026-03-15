@@ -297,16 +297,14 @@ class TestSessionSSEBroadcast:
     def test_session_start_pushes_event(self, flask_client):
         flask_client.post("/api/config", json={"deck": "MyDeck"})
         flask_client.post("/api/session/start")
-        # session_start is not a log-worthy type, but let's check _activity_log
-        # doesn't include it (it shouldn't, since it's not in the list)
         types = [e["type"] for e in flask_server._activity_log]
-        assert "session_start" not in types
+        assert "session_start" in types
 
     def test_session_stop_pushes_event(self, flask_client):
         flask_client.post("/api/session/start")
         flask_client.post("/api/session/stop")
         types = [e["type"] for e in flask_server._activity_log]
-        assert "session_stop" not in types
+        assert "session_stop" in types
 
 
 class TestNoCacheHeaders:

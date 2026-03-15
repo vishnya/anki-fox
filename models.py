@@ -17,8 +17,9 @@ RULES:
 - Each card tests ONE concept. If the back needs more than 2 sentences, split it into multiple cards instead.
 - Front: write how a curious student would actually ask it — conversational, not academic. "Why does X cause Y?" not "Describe the mechanism by which X results in Y."
 - Front: never use passive voice or academic phrasing. Not "What is the mechanism by which..." or "How is X characterized by..." — just ask it directly.
-- Back: 1–2 sentences max, plain english. Use jargon only when the jargon itself is what's being learned. Never use phrases like "as illustrated", "in the context of", or "with respect to".
-- If you are tempted to write a back longer than 2 sentences, stop — split it into multiple cards instead.
+- Back: 1–3 sentences max, plain english. Use jargon only when the jargon itself is what's being learned. Never use phrases like "as illustrated", "in the context of", or "with respect to".
+- Never cram extra info into parentheses — if it's worth saying, give it its own sentence. A 3-sentence back with clear sentences is better than 1 sentence stuffed with parentheticals.
+- If you are tempted to write a back longer than 3 sentences, stop — split it into multiple cards instead.
 - For definitions: "What is [term]?" → one plain-english sentence
 - For processes/steps: one card per step, written as a natural question
 - For cause/effect: "What happens when X?" → short direct answer; add a reverse card if both directions are worth knowing
@@ -126,6 +127,30 @@ def _build_prompt(config: dict) -> str:
     deck_context = _format_deck_context(config.get("deck_context", []))
     if deck_context:
         prompt = prompt.replace("RULES:", deck_context + "RULES:", 1)
+
+    # Add transcript context if available (YouTube video mode)
+    transcript = config.get("transcript_context", "").strip()
+    if transcript:
+        timestamp = config.get("timestamp")
+        video_title = config.get("video_title", "")
+        ts_str = ""
+        if timestamp is not None:
+            total = int(timestamp)
+            m, s = divmod(total, 60)
+            h, m = divmod(m, 60)
+            ts_str = f"{h}:{m:02d}:{s:02d}" if h else f"{m}:{s:02d}"
+        header = "TRANSCRIPT CONTEXT"
+        if ts_str:
+            header += f" (around timestamp {ts_str})"
+        if video_title:
+            header += f" from \"{video_title}\""
+        header += ":\n"
+        transcript_block = (
+            f"{header}{transcript}\n\n"
+            f"Use this transcript alongside the screenshot to generate accurate cards. "
+            f"The transcript provides spoken context that may clarify or supplement what's visible in the screenshot.\n\n"
+        )
+        prompt = prompt.replace("RULES:", transcript_block + "RULES:", 1)
 
     custom = config.get("custom_prompt", "").strip()
     if not custom:

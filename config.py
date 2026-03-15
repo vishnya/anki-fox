@@ -22,6 +22,7 @@ DEFAULT_CONFIG = {
     },
     "custom_prompt": "",
     "deck_prompts": {},
+    "deck_sources": {},
     "skip_delete_confirm": False,
 }
 

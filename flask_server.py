@@ -13,6 +13,7 @@ from watchdog.observers import Observer
 
 import config as cfg
 import models
+import youtube
 
 ANKICONNECT_URL = "http://localhost:8765"
 SCREENSHOTS_DIR = Path.home() / "AnkiFox" / "incoming"
@@ -251,6 +252,13 @@ def _queue_worker():
         _process_queue()
 
 
+# ── YouTube video state ─────────────────────────────────────────────────────
+_video_lock = threading.Lock()
+_loaded_video: youtube.VideoMeta | None = None
+_extension_connected = False
+_extension_path = str(Path(__file__).parent / "extension")
+
+
 def _push_event(data: dict):
     # Persist log-worthy events for replay on reconnect
     etype = data.get("type", "")
@@ -321,6 +329,9 @@ class ScreenshotHandler(FileSystemEventHandler):
     def on_created(self, event):
         if event.is_directory or not event.src_path.endswith(".png"):
             return
+        # Skip dot-prefixed files (used as temp storage for multi-screenshot)
+        if Path(event.src_path).name.startswith("."):
+            return
         path = event.src_path
         time.sleep(0.5)  # let screencapture finish writing
 
@@ -348,9 +359,35 @@ class ScreenshotHandler(FileSystemEventHandler):
 
         conf["deck_context"] = fetch_deck_cards(deck)
 
+        # Video source: attach transcript context
+        source = conf.get("deck_sources", {}).get(deck, {}).get("source", "screen")
+        timestamp = None
+        if source == "video":
+            with _video_lock:
+                video = _loaded_video
+            if video and video.transcript:
+                ts = conf.get("deck_sources", {}).get(deck, {}).get("timestamp")
+                if ts is not None:
+                    timestamp = float(ts)
+                else:
+                    # Use end of transcript as fallback (latest point)
+                    timestamp = video.duration
+                chunk = youtube.get_transcript_chunk(video.transcript, timestamp)
+                if chunk:
+                    conf["transcript_context"] = chunk
+                    conf["timestamp"] = timestamp
+                    conf["video_title"] = video.title
+                    conf["video_id"] = video.video_id
+
         try:
             cards = models.generate_cards(path, conf)
             _push_event({"type": "progress", "message": f"{len(cards)} card(s) generated, adding to Anki..."})
+
+            # Add timestamp tag to video-sourced cards
+            if timestamp is not None:
+                ts_tag = f"yt-{youtube.format_timestamp(timestamp).replace(':', '')}"
+                for card in cards:
+                    card.setdefault("tags", []).append(ts_tag)
 
             result = _add_cards_to_anki(cards, path, deck)
             batch_id = result["batch_id"]
@@ -358,14 +395,18 @@ class ScreenshotHandler(FileSystemEventHandler):
             added_cards = [c for c in cards if c.get("note_id")]
             with _recent_lock:
                 for card in reversed(added_cards):
-                    _recent_cards.insert(0, {
+                    entry = {
                         "front":    card["front"],
                         "back":     card["back"],
                         "deck":     deck,
                         "ts":       time.time(),
                         "batch_id": batch_id,
                         "note_id":  card["note_id"],
-                    })
+                    }
+                    if timestamp is not None:
+                        entry["yt_timestamp"] = timestamp
+                        entry["video_id"] = conf.get("video_id", "")
+                    _recent_cards.insert(0, entry)
                 del _recent_cards[20:]  # keep last 20
                 _save_state()
 
@@ -463,7 +504,7 @@ def api_config_get():
 def api_config_post():
     data = request.get_json(force=True)
     conf = cfg.load()
-    for key in ("deck", "model", "api_keys", "custom_prompt", "deck_prompts", "skip_delete_confirm"):
+    for key in ("deck", "model", "api_keys", "custom_prompt", "deck_prompts", "deck_sources", "skip_delete_confirm"):
         if key in data:
             conf[key] = data[key]
     cfg.save(conf)
@@ -601,7 +642,9 @@ def api_delete_card():
 @app.route("/api/session", methods=["GET"])
 def api_session():
     conf = cfg.load()
-    return jsonify({"active": conf.get("session_active", False), "deck": conf.get("deck", "")})
+    deck = conf.get("deck", "")
+    source = conf.get("deck_sources", {}).get(deck, {}).get("source", "screen")
+    return jsonify({"active": conf.get("session_active", False), "deck": deck, "source": source})
 
 
 @app.route("/api/session/start", methods=["POST"])
@@ -660,6 +703,121 @@ def api_connectivity():
     with _queue_lock:
         qc = len(_offline_queue)
     return jsonify({"online": online, "queue_count": qc})
+
+
+@app.route("/api/youtube/load", methods=["POST"])
+def api_youtube_load():
+    """Load a YouTube video's transcript and metadata."""
+    global _loaded_video
+    data = request.get_json(force=True)
+    url = data.get("url", "").strip()
+    if not url:
+        return jsonify({"error": "No URL provided"}), 400
+    try:
+        video = youtube.load_video(url)
+        with _video_lock:
+            _loaded_video = video
+        return jsonify(video.to_dict())
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+
+
+@app.route("/api/youtube/status")
+def api_youtube_status():
+    """Return currently loaded video info or null."""
+    with _video_lock:
+        if _loaded_video:
+            return jsonify(_loaded_video.to_dict())
+    return jsonify(None)
+
+
+@app.route("/api/youtube/clear", methods=["POST"])
+def api_youtube_clear():
+    """Clear the loaded video."""
+    global _loaded_video
+    with _video_lock:
+        _loaded_video = None
+    return jsonify({"ok": True})
+
+
+@app.route("/api/extension/hello", methods=["POST"])
+def api_extension_hello():
+    """Extension registration ping — marks extension as connected."""
+    global _extension_connected
+    _extension_connected = True
+    return jsonify({"ok": True})
+
+
+@app.route("/api/extension/status")
+def api_extension_status():
+    """Return extension connection status and install path."""
+    return jsonify({
+        "connected": _extension_connected,
+        "path": _extension_path,
+    })
+
+
+@app.route("/api/source/cycle", methods=["POST"])
+def api_source_cycle():
+    """Cycle through sources: screen → multi → video → screen."""
+    conf = cfg.load()
+    deck = conf.get("deck", "")
+    if not deck:
+        return jsonify({"error": "No deck set"}), 400
+    sources = ["screen", "multi", "video"]
+    current = conf.get("deck_sources", {}).get(deck, {}).get("source", "screen")
+    idx = sources.index(current) if current in sources else 0
+    new_source = sources[(idx + 1) % len(sources)]
+    deck_sources = conf.get("deck_sources", {})
+    if new_source == "screen":
+        deck_sources.pop(deck, None)
+    else:
+        deck_sources[deck] = {**deck_sources.get(deck, {}), "source": new_source}
+    conf["deck_sources"] = deck_sources
+    cfg.save(conf)
+    _push_event({"type": "source_changed", "source": new_source, "deck": deck})
+    return jsonify({"ok": True, "source": new_source})
+
+
+@app.route("/api/multi/finish", methods=["POST"])
+def api_multi_finish():
+    """Stitch multiple temp screenshots into one and drop into incoming."""
+    data = request.get_json(force=True)
+    paths = data.get("paths", [])
+    if not paths:
+        return jsonify({"error": "No paths provided"}), 400
+
+    # Validate all paths exist
+    images = []
+    for p in paths:
+        if not Path(p).exists():
+            return jsonify({"error": f"File not found: {p}"}), 400
+        images.append(Image.open(p))
+
+    # Stitch vertically
+    total_w = max(im.width for im in images)
+    total_h = sum(im.height for im in images)
+    result = Image.new("RGB", (total_w, total_h), (255, 255, 255))
+    y = 0
+    for im in images:
+        result.paste(im, (0, y))
+        y += im.height
+    for im in images:
+        im.close()
+
+    import os
+    ts = time.strftime("%Y%m%d_%H%M%S")
+    dest = str(SCREENSHOTS_DIR / f"screenshot_{ts}.png")
+    result.save(dest)
+
+    # Clean up temp files
+    for p in paths:
+        try:
+            os.remove(p)
+        except OSError:
+            pass
+
+    return jsonify({"ok": True, "path": dest})
 
 
 @app.route("/api/offline-queue")

@@ -64,6 +64,7 @@ If hotkeys stop working after granting permissions, click the Hammerspoon icon i
 | Hotkey | What it does |
 |--------|--------------|
 | `⌥⇧A` (Option + Shift + A) | Opens setup if no session is running. Takes a screenshot if one is. |
+| `⌥⇧M` (Option + Shift + M) | Cycles capture mode: Screen → Multi → Video. Multi stitches several selections into one image. Video pairs screenshots with YouTube transcripts. |
 | `⌥⇧⌘A` (Option + Shift + Cmd + A) | Opens the setup page (useful if you closed the tab). |
 
 **Step by step:**

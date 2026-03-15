@@ -55,12 +55,147 @@ const activityLog     = document.getElementById("activity-log");
 const toast           = document.getElementById("toast");
 const offlineBanner   = document.getElementById("offline-banner");
 const offlineText     = document.getElementById("offline-text");
+const sourceVideoConfig = document.getElementById("source-video-config");
+const youtubeUrlInput   = document.getElementById("youtube-url");
+const btnLoadVideo      = document.getElementById("btn-load-video");
+const videoInfo         = document.getElementById("video-info");
+const videoTitle        = document.getElementById("video-title");
+const videoMetaEl       = document.getElementById("video-meta");
+const extensionBanner   = document.getElementById("extension-banner");
+const btnCopyExtPath    = document.getElementById("btn-copy-ext-path");
+const btnExtSkip        = document.getElementById("btn-ext-skip");
+const btnExtDone        = document.getElementById("btn-ext-done");
 
 // ── State ──────────────────────────────────────────────────────────────────────
 let config        = null;
 let sessionActive = false;
 let ankiReachable = false;
 let retryTimer    = null;
+let currentSource = "screen";
+
+// ── Source selector ────────────────────────────────────────────────────────────
+const SOURCE_LABELS = { screen: "Screen", multi: "Multi", video: "Video" };
+
+function setSource(source) {
+  currentSource = source;
+  if (source === "video" && sessionActive) {
+    sourceVideoConfig.classList.remove("hidden");
+    loadVideoStatus();
+    checkExtensionStatus();
+  } else {
+    sourceVideoConfig.classList.add("hidden");
+  }
+  if (sessionActive) updateSessionUI();
+}
+
+function loadSourceForDeck(deck) {
+  const deckSources = config?.deck_sources || {};
+  const source = deckSources[deck]?.source || "screen";
+  setSource(source);
+  if (source === "video") {
+    youtubeUrlInput.value = deckSources[deck]?.youtube_url || "";
+  }
+}
+
+async function loadVideoStatus() {
+  try {
+    const res = await fetch("/api/youtube/status");
+    const data = await res.json();
+    if (data && data.video_id) {
+      showVideoInfo(data);
+    } else {
+      videoInfo.classList.add("hidden");
+    }
+  } catch { videoInfo.classList.add("hidden"); }
+}
+
+function showVideoInfo(data) {
+  videoTitle.textContent = data.title || data.video_id;
+  const dur = data.duration ? formatDuration(data.duration) : "";
+  const segs = data.segment_count || 0;
+  videoMetaEl.textContent = `${segs} segments${dur ? " \u00B7 " + dur : ""}${data.transcript_loaded ? " \u00B7 \u2713 Transcript loaded" : ""}`;
+  videoInfo.classList.remove("hidden");
+}
+
+function formatDuration(secs) {
+  const total = Math.floor(secs);
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  if (h) return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
+
+btnLoadVideo.addEventListener("click", async () => {
+  const url = youtubeUrlInput.value.trim();
+  if (!url) { showToast("Enter a YouTube URL", true); return; }
+  btnLoadVideo.disabled = true;
+  btnLoadVideo.textContent = "...";
+  try {
+    const res = await fetch("/api/youtube/load", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url }),
+    });
+    const data = await res.json();
+    if (data.error) {
+      showToast(data.error, true);
+      videoInfo.classList.add("hidden");
+    } else {
+      showVideoInfo(data);
+      // Store URL in deck_sources
+      const deck = deckSelect.value;
+      if (deck) {
+        const deckSources = { ...(config?.deck_sources || {}) };
+        deckSources[deck] = { ...(deckSources[deck] || {}), source: "video", youtube_url: url };
+        config = { ...config, deck_sources: deckSources };
+        saveConfig();
+      }
+    }
+  } catch { showToast("Failed to load video", true); }
+  btnLoadVideo.disabled = false;
+  btnLoadVideo.textContent = "Load";
+});
+
+// ── Extension setup banner ─────────────────────────────────────────────────────
+let _extensionSkipped = false;
+let _extensionPath = "";
+
+async function checkExtensionStatus() {
+  if (_extensionSkipped) return;
+  try {
+    const res = await fetch("/api/extension/status");
+    const data = await res.json();
+    _extensionPath = data.path || "";
+    if (data.connected) {
+      extensionBanner.classList.add("hidden");
+    } else if (currentSource === "video") {
+      extensionBanner.classList.remove("hidden");
+    }
+  } catch { /* ignore */ }
+}
+
+btnCopyExtPath.addEventListener("click", () => {
+  navigator.clipboard.writeText(_extensionPath).then(
+    () => showToast("Path copied"),
+    () => showToast("Copy failed", true),
+  );
+});
+
+btnExtSkip.addEventListener("click", () => {
+  _extensionSkipped = true;
+  extensionBanner.classList.add("hidden");
+});
+
+btnExtDone.addEventListener("click", async () => {
+  try {
+    await fetch("/api/extension/hello", { method: "POST" });
+    extensionBanner.classList.add("hidden");
+    showToast("Extension connected");
+  } catch {
+    showToast("Could not verify extension", true);
+  }
+});
 
 // ── Init ───────────────────────────────────────────────────────────────────────
 async function init() {
@@ -84,6 +219,7 @@ async function loadConfig() {
   await updateProviderUI(provider, false);
   setModelValue(config.model?.model_name || "");
   updatePromptSavedIndicator(config.deck);
+  loadSourceForDeck(config.deck || "");
   updateSessionUI();
 }
 
@@ -159,6 +295,7 @@ async function saveConfig() {
     api_keys:      { ...(config?.api_keys || {}), [provider]: apiKeyInput.value.trim() },
     custom_prompt: prompt,
     deck_prompts:  deckPrompts,
+    deck_sources:  config?.deck_sources || {},
   };
   await fetch("/api/config", { method: "POST", body: JSON.stringify(body), headers: { "Content-Type": "application/json" } });
   config = { ...config, ...body };
@@ -359,6 +496,7 @@ deckSelect.addEventListener("change", async () => {
   // Load the new deck's saved prompt (or clear if none)
   promptInput.value = deckPrompts[newDeck] || "";
   updatePromptSavedIndicator(newDeck);
+  loadSourceForDeck(newDeck);
 
   await saveConfig();
 });
@@ -389,13 +527,22 @@ function updateSessionUI() {
     statusBanner.className = "status-banner active";
     statusBanner.classList.remove("hidden");
     statusBanner.querySelector(".status-dot").classList.add("pulse");
-    statusText.textContent = `Session active — press ⌥⇧A to screenshot (deck: ${config?.deck || "?"})`;
+    let statusMsg = `Session active — \u2325\u21E7A to screenshot (deck: ${config?.deck || "?"})`;
+    if (currentSource === "multi") statusMsg = `Session active — \u2325\u21E7A to multi-capture (deck: ${config?.deck || "?"})`;
+    if (currentSource === "video") statusMsg = `Session active — \u2325\u21E7A to capture moment (deck: ${config?.deck || "?"})`;
+    statusText.textContent = statusMsg;
+    if (currentSource === "video") {
+      sourceVideoConfig.classList.remove("hidden");
+    } else {
+      sourceVideoConfig.classList.add("hidden");
+    }
     setFormDisabled(true);
     startConnectivityPolling();
   } else {
     startBtn.classList.remove("hidden");
     stopBtn.classList.add("hidden");
     statusBanner.classList.add("hidden");
+    sourceVideoConfig.classList.add("hidden");
     setFormDisabled(false);
     stopConnectivityPolling();
   }
@@ -404,6 +551,7 @@ function updateSessionUI() {
 function setFormDisabled(disabled) {
   [deckSelect, providerSelect, modelNameInput, modelCustomInput, apiKeyInput, baseUrlInput, promptInput, btnNewDeck]
     .forEach(el => { el.disabled = disabled; });
+  // Source pills, YouTube URL, and load button stay enabled during session
 }
 
 // ── Save & Start ───────────────────────────────────────────────────────────────
@@ -547,6 +695,7 @@ function connectSSE() {
     if (event.type === "offline_queued") { _isOffline = true; logActivity(event.message, "offline"); updateOfflineBanner(event.queue_count); return; }
     if (event.type === "queue_update") { updateOfflineBanner(event.queue_count); return; }
     if (event.type === "queue_clear")  { _isOffline = false; logActivity(event.message, "done"); updateOfflineBanner(0); return; }
+    if (event.type === "source_changed") { setSource(event.source); return; }
     if (event.type === "error")   { logActivity(event.message, "error"); return; }
     if (event.type === "progress") { logActivity(event.message, "progress"); }
   };
@@ -657,6 +806,17 @@ function buildCardLi(c) {
       back.className   = "card-back";
       back.textContent = c.back.split("\n")[0];
       meta.appendChild(back);
+    }
+
+    if (c.yt_timestamp !== undefined && c.video_id) {
+      const badge = document.createElement("a");
+      badge.className = "yt-badge";
+      badge.textContent = "\u25B6 " + formatDuration(c.yt_timestamp);
+      badge.href = `https://youtube.com/watch?v=${c.video_id}&t=${Math.floor(c.yt_timestamp)}`;
+      badge.target = "_blank";
+      badge.rel = "noopener";
+      badge.title = "Open in YouTube at this timestamp";
+      meta.appendChild(badge);
     }
 
     if (c.deck) {
