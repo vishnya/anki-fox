@@ -222,5 +222,5 @@ end)
 
 hs.alert.show("anki-fox loaded — ⌥⇧A ready")
 
--- Locus quick capture
-dofile(os.getenv("HOME") .. "/code/locus/hammerspoon/locus_hotkey.lua")
+-- Pancake hotkeys
+dofile(os.getenv("HOME") .. "/code/pancake/hammerspoon/pancake_hotkey.lua")
