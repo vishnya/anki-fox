@@ -24,6 +24,10 @@ RULES:
 - For processes/steps: one card per step, written as a natural question
 - For cause/effect: "What happens when X?" → short direct answer; add a reverse card if both directions are worth knowing
 - For formulas: "What's the formula for [concept]?" → formula + what each variable means
+- For computations/worked examples: the front MUST give all the numbers needed to do the calculation — never ask the reader to compute something without providing every input. The back shows the formula with numbers plugged in, the result, and names the broader concept in bold (e.g. "**Concept: utilization inflates cost.** You pay for 100% of GPU time but only use 70%, so the bill is 1/0.7 ≈ 1.43x the theoretical minimum."). The point of a computation card is to illustrate a concept through a concrete example, not to test arithmetic.
+  BAD front: "How much would it cost to train GPT-3 on 256 H100s at $2/hour with 70% utilization?" — where does the training time come from? The reader can't compute anything.
+  GOOD front: "GPT-3-175B takes 256 days to train on 256 H100s. Each GPU rents for $2/hour, but you only achieve 70% utilization. What's the total training cost?"
+  GOOD back: "$2/GPU/hr × 256 GPUs × 24 hr/day × 256 days / 0.7 = ~$4.14M. **Concept: utilization inflates cost.** You pay for 100% of GPU time but only get useful compute 70% of it, so the actual bill is 1/0.7 ≈ 1.43× the theoretical minimum."
 - For lists: cloze-style ("The 3 types of X are: [A], [B], [C]") not one card per item
 - Skip trivial or obvious facts
 - Generate 1–8 cards depending on content density
@@ -63,6 +67,7 @@ SELF-CHECK: before returning JSON, read each card and ask:
 1. "Would a smart 16-year-old understand this immediately?" If not, rewrite it.
 2. For diagram cards: "Does the front make sense if the reader has NEVER seen the diagram?" If the front mentions the chart, graph, figure, or diagram in any way (other than the "(Diagram)" tag), rewrite it as a standalone factual question.
 3. For diagram cards: "Does the back reference any visual elements (symbols, colors, markers, axis labels)?" If so, rewrite using only words — no "marked ×", "circles", "blue line", etc.
+4. For computation cards: "Does the front provide EVERY number needed to do the calculation on the back?" If the back uses any number not stated on the front, add it to the front. Also verify the back names the broader concept being illustrated.
 
 Return ONLY valid JSON in this exact format, no other text:
 {

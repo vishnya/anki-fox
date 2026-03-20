@@ -35,6 +35,18 @@ class TestBuildPrompt:
         prompt = models._build_prompt({"custom_prompt": "   \n  "})
         assert prompt == models.PROMPT_TEMPLATE
 
+    def test_computation_rules_in_prompt(self):
+        prompt = models._build_prompt({"custom_prompt": ""})
+        assert "computation" in prompt.lower()
+        assert "EVERY number needed" in prompt
+        assert "broader concept" in prompt
+
+    def test_computation_selfcheck_in_prompt(self):
+        prompt = models._build_prompt({"custom_prompt": ""})
+        selfcheck_pos = prompt.index("SELF-CHECK:")
+        comp_check = "computation cards"
+        assert comp_check in prompt[selfcheck_pos:]
+
 
 class TestPromptAdherence:
     """Integration tests: verify the full pipeline (screenshot → prompt → cards)
