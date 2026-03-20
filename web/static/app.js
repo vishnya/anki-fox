@@ -1,7 +1,11 @@
 // ── Constants ──────────────────────────────────────────────────────────────────
 const MODEL_DEFAULTS = {
+  "claude-code": {
+    label: "Claude (subscription)", apiKeyLabel: "", apiKeyPlaceholder: "", hasKey: false, hasUrl: false,
+    models: ["claude-sonnet-4-6", "claude-opus-4-6", "claude-haiku-4-5"],
+  },
   anthropic: {
-    label: "Claude", apiKeyLabel: "Anthropic API Key", apiKeyPlaceholder: "sk-ant-...", hasKey: true, hasUrl: false,
+    label: "Claude (API key)", apiKeyLabel: "Anthropic API Key", apiKeyPlaceholder: "sk-ant-...", hasKey: true, hasUrl: false,
     models: ["claude-sonnet-4-6", "claude-opus-4-6", "claude-haiku-4-5", "claude-sonnet-4-5"],
   },
   openai: {

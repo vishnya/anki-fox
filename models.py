@@ -216,6 +216,8 @@ def generate_cards(image_path: str, config: dict) -> list[dict]:
     provider = config.get("model", {}).get("provider", "anthropic")
     if provider == "anthropic":
         return _generate_anthropic(image_path, config)
+    elif provider == "claude-code":
+        return _generate_claude_code(image_path, config)
     else:
         return _generate_openai_compat(image_path, config)
 
@@ -243,6 +245,53 @@ def _generate_anthropic(image_path: str, config: dict) -> list[dict]:
         }],
     )
     return _parse_cards(message.content[0].text)
+
+
+def _generate_claude_code(image_path: str, config: dict) -> list[dict]:
+    import subprocess
+
+    model_name = config["model"].get("model_name", "claude-sonnet-4-6")
+    prompt = _build_prompt(config)
+    full_prompt = (
+        f"Read the image at {image_path} using the Read tool, "
+        f"then follow these instructions:\n\n{prompt}"
+    )
+
+    cmd = [
+        "claude", "-p",
+        "--output-format", "json",
+        "--model", model_name,
+        "--allowedTools", "Read",
+    ]
+
+    try:
+        result = subprocess.run(
+            cmd, input=full_prompt, capture_output=True,
+            text=True, timeout=120,
+        )
+    except FileNotFoundError:
+        raise ValueError(
+            "Claude Code not found — install it from "
+            "https://docs.anthropic.com/en/docs/claude-code"
+        )
+    except subprocess.TimeoutExpired:
+        raise ValueError("Claude Code timed out after 120 seconds")
+
+    if result.returncode != 0:
+        raise ValueError(f"Claude Code error: {result.stderr.strip()[:300]}")
+
+    try:
+        output = json.loads(result.stdout)
+    except json.JSONDecodeError:
+        raise ValueError(
+            f"Claude Code returned invalid JSON: {result.stdout[:200]}"
+        )
+
+    text = output.get("result", "")
+    if not text:
+        raise ValueError("Claude Code returned empty result")
+
+    return _parse_cards(text)
 
 
 def _generate_openai_compat(image_path: str, config: dict) -> list[dict]:
