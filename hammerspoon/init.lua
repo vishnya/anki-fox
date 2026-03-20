@@ -79,11 +79,13 @@ local multiPaths = {}
 local multiTimeout = nil
 local multiEscTap = nil
 local multiEnterTap = nil
+local multiPendingTask = nil
 local MULTI_TIMEOUT_SECS = 30
 
 local function exitMultiMode()
   multiMode = false
   multiPaths = {}
+  multiPendingTask = nil
   if labelCanvas then labelCanvas:delete(); labelCanvas = nil end
   if multiTimeout then multiTimeout:stop(); multiTimeout = nil end
   if multiEscTap then multiEscTap:delete(); multiEscTap = nil end
@@ -91,6 +93,10 @@ local function exitMultiMode()
 end
 
 local function cancelMultiMode()
+  -- Terminate any in-flight screencapture
+  if multiPendingTask and multiPendingTask:isRunning() then
+    multiPendingTask:terminate()
+  end
   -- Clean up temp files
   for _, p in ipairs(multiPaths) do
     os.remove(p)
@@ -100,6 +106,11 @@ local function cancelMultiMode()
 end
 
 local function finishMultiMode()
+  -- Terminate any in-flight screencapture (user pressed Enter during selection)
+  if multiPendingTask and multiPendingTask:isRunning() then
+    multiPendingTask:terminate()
+  end
+
   local paths = {}
   for _, p in ipairs(multiPaths) do
     table.insert(paths, p)
@@ -137,17 +148,35 @@ end
 local function takeMultiScreenshot()
   local ts   = os.date("%Y%m%d_%H%M%S") .. "_" .. #multiPaths
   local path = INCOMING .. "/.multi_" .. ts .. ".png"
-  hs.task.new("/usr/sbin/screencapture", function(exitCode, _, _)
-    hs.timer.doAfter(0.3, function()
-      if hs.fs.attributes(path) then
-        table.insert(multiPaths, path)
+
+  -- Disable Enter/Escape while screencapture is active so keys reach screencapture
+  if multiEscTap then multiEscTap:disable() end
+  if multiEnterTap then multiEnterTap:disable() end
+
+  multiPendingTask = hs.task.new("/usr/sbin/screencapture", function(exitCode, _, _)
+    multiPendingTask = nil
+
+    -- Re-enable Enter/Escape now that screencapture is done
+    if multiEscTap then multiEscTap:enable() end
+    if multiEnterTap then multiEnterTap:enable() end
+
+    -- No delay needed — file is fully written when the process exits
+    if hs.fs.attributes(path) then
+      table.insert(multiPaths, path)
+      showLabel(#multiPaths .. " captured — ⌥⇧A for more, Enter to finish, Esc to cancel", MULTI_TIMEOUT_SECS)
+      -- Reset timeout on each screenshot
+      if multiTimeout then multiTimeout:stop() end
+      multiTimeout = hs.timer.doAfter(MULTI_TIMEOUT_SECS, cancelMultiMode)
+    else
+      -- User cancelled the selection — re-show prompt
+      if #multiPaths > 0 then
         showLabel(#multiPaths .. " captured — ⌥⇧A for more, Enter to finish, Esc to cancel", MULTI_TIMEOUT_SECS)
-        -- Reset timeout on each screenshot
-        if multiTimeout then multiTimeout:stop() end
-        multiTimeout = hs.timer.doAfter(MULTI_TIMEOUT_SECS, cancelMultiMode)
+      else
+        showLabel("Multi: select a region — ⌥⇧A to capture, Enter to finish, Esc to cancel", MULTI_TIMEOUT_SECS)
       end
-    end)
-  end, {"-i", path}):start()
+    end
+  end, {"-i", path})
+  multiPendingTask:start()
 end
 
 local function enterMultiMode()
