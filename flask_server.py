@@ -297,6 +297,13 @@ def _ankiconnect(action: str, **params):
     return result["result"]
 
 
+def _strip_html_preserve_math(text: str) -> str:
+    """Convert Anki's <anki-mathjax> tags to \\( \\) delimiters, then strip remaining HTML."""
+    text = re.sub(r'<anki-mathjax block="true">(.*?)</anki-mathjax>', r'\\[\1\\]', text, flags=re.DOTALL)
+    text = re.sub(r'<anki-mathjax>(.*?)</anki-mathjax>', r'\\(\1\\)', text, flags=re.DOTALL)
+    return re.sub(r"<[^>]+>", "", text).strip()
+
+
 def fetch_deck_cards(deck: str, limit: int = 30) -> list[dict]:
     """Fetch the most recent cards from a deck for LLM context. Never raises."""
     try:
@@ -310,9 +317,9 @@ def fetch_deck_cards(deck: str, limit: int = 30) -> list[dict]:
         for n in notes:
             front = n.get("fields", {}).get("Front", {}).get("value", "")
             back = n.get("fields", {}).get("Back", {}).get("value", "")
-            # Strip HTML tags for clean text context
-            back = re.sub(r"<[^>]+>", "", back).strip()
-            front = re.sub(r"<[^>]+>", "", front).strip()
+            # Convert Anki's internal MathJax tags back to delimiters, then strip HTML
+            front = _strip_html_preserve_math(front)
+            back = _strip_html_preserve_math(back)
             if front:
                 cards.append({
                     "front": front,

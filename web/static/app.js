@@ -1,3 +1,19 @@
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function escapeHtmlExceptMath(text) {
+  // Escape HTML entities but preserve MathJax \(...\) and \[...\] delimiters
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function typesetMath() {
+  if (typeof MathJax !== "undefined" && MathJax.typesetPromise) {
+    MathJax.typesetPromise().catch(() => {});
+  }
+}
+
 // ── Constants ──────────────────────────────────────────────────────────────────
 const MODEL_DEFAULTS = {
   anthropic: {
@@ -709,6 +725,7 @@ function renderCards(cards) {
     return;
   }
   cards.forEach(c => cardsList.appendChild(buildCardLi(c)));
+  typesetMath();
 }
 
 function prependCards(cards, batchId) {
@@ -722,6 +739,7 @@ function prependCards(cards, batchId) {
     }));
   }
   while (cardsList.children.length > 20) cardsList.removeChild(cardsList.lastChild);
+  typesetMath();
 }
 
 function removeBatch(batchId) {
@@ -776,7 +794,7 @@ function buildCardLi(c) {
 
   const front = document.createElement("span");
   front.className   = "card-front";
-  front.textContent = c.front;
+  front.innerHTML = escapeHtmlExceptMath(c.front);
 
   if (c.note_id) {
     const del = document.createElement("button");
@@ -804,7 +822,7 @@ function buildCardLi(c) {
     if (c.back) {
       const back = document.createElement("span");
       back.className   = "card-back";
-      back.textContent = c.back.split("\n")[0];
+      back.innerHTML = escapeHtmlExceptMath(c.back.split("\n")[0]);
       meta.appendChild(back);
     }
 
