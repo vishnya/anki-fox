@@ -82,9 +82,11 @@ const videoInfo         = document.getElementById("video-info");
 const videoTitle        = document.getElementById("video-title");
 const videoMetaEl       = document.getElementById("video-meta");
 const extensionBanner   = document.getElementById("extension-banner");
+const btnOpenExtFolder  = document.getElementById("btn-open-ext-folder");
 const btnCopyExtPath    = document.getElementById("btn-copy-ext-path");
 const btnExtSkip        = document.getElementById("btn-ext-skip");
 const btnExtDone        = document.getElementById("btn-ext-done");
+const extPathDisplay    = document.getElementById("ext-path-display");
 
 // ── State ──────────────────────────────────────────────────────────────────────
 let config        = null;
@@ -187,6 +189,7 @@ async function checkExtensionStatus() {
     const res = await fetch("/api/extension/status");
     const data = await res.json();
     _extensionPath = data.path || "";
+    if (extPathDisplay) extPathDisplay.textContent = _extensionPath;
     if (data.connected) {
       extensionBanner.classList.add("hidden");
     } else if (currentSource === "video") {
@@ -194,6 +197,15 @@ async function checkExtensionStatus() {
     }
   } catch { /* ignore */ }
 }
+
+btnOpenExtFolder.addEventListener("click", async () => {
+  try {
+    await fetch("/api/extension/reveal", { method: "POST" });
+    showToast("Folder opened in Finder");
+  } catch {
+    showToast("Could not open folder", true);
+  }
+});
 
 btnCopyExtPath.addEventListener("click", () => {
   navigator.clipboard.writeText(_extensionPath).then(

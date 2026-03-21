@@ -1128,6 +1128,22 @@ class TestYouTubeLifecycle:
         flask_client.post("/api/extension/hello")
         assert flask_client.get("/api/extension/status").get_json()["connected"] is True
 
+    def test_extension_status_includes_path(self, flask_client):
+        data = flask_client.get("/api/extension/status").get_json()
+        assert "path" in data
+        assert "extension" in data["path"]
+
+    def test_extension_reveal_endpoint(self, flask_client):
+        """Reveal endpoint should call subprocess to open the folder."""
+        with patch("flask_server.subprocess.run") as mock_run:
+            resp = flask_client.post("/api/extension/reveal")
+            assert resp.status_code == 200
+            assert resp.get_json()["ok"] is True
+            mock_run.assert_called_once()
+            args = mock_run.call_args[0][0]
+            assert args[0] == "open"
+            assert "extension" in args[1]
+
 
 # ── Source cycling tests ──────────────────────────────────────────────────────
 

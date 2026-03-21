@@ -2,6 +2,7 @@ import json
 import logging
 import queue
 import re
+import subprocess
 import threading
 import time
 import uuid
@@ -833,6 +834,16 @@ def api_extension_status():
         "connected": _extension_connected,
         "path": _extension_path,
     })
+
+
+@app.route("/api/extension/reveal", methods=["POST"])
+def api_extension_reveal():
+    """Open the extension folder in Finder so the user can drag it into Chrome."""
+    try:
+        subprocess.run(["open", _extension_path], check=True, timeout=5)
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
 
 
 @app.route("/api/source/cycle", methods=["POST"])
