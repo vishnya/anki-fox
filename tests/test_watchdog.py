@@ -82,7 +82,7 @@ def test_skips_tiny_screenshot(tmp_path, tmp_config):
 
     error_events = [e for e in pushed_events if e.get("type") == "error"]
     assert len(error_events) == 1
-    assert "too small" in error_events[0]["message"].lower()
+    assert "cancelled selection" in error_events[0]["message"].lower()
 
 
 def test_duplicate_cards_reported(tmp_config, tiny_png):

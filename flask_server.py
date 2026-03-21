@@ -343,12 +343,12 @@ class ScreenshotHandler(FileSystemEventHandler):
         path = event.src_path
         time.sleep(0.5)  # let screencapture finish writing
 
-        # Validate screenshot — tiny images are usually cancelled selections
+        # Validate screenshot — tiny images are cancelled selections
         try:
             with Image.open(path) as img:
                 w, h = img.size
             if w < 50 or h < 50:
-                _push_event({"type": "error", "message": f"Screenshot too small ({w}x{h}) — looks like a cancelled selection. Skipping."})
+                _push_event({"type": "error", "message": f"Cancelled selection ({w}x{h}). Skipping."})
                 return
         except Exception:
             pass  # if we can't read it, let later code handle the error
@@ -389,6 +389,9 @@ class ScreenshotHandler(FileSystemEventHandler):
 
         try:
             cards = models.generate_cards(path, conf)
+            if not cards:
+                _push_event({"type": "done", "message": "No cards generated — screenshot may not contain study-worthy content.", "cards": [], "batch_id": None})
+                return
             _push_event({"type": "progress", "message": f"{len(cards)} card(s) generated, adding to Anki..."})
 
             # Add timestamp tag to video-sourced cards
