@@ -830,15 +830,25 @@ def api_extension_hello():
 @app.route("/api/extension/status")
 def api_extension_status():
     """Return extension connection status and install path."""
+    ext_dir = Path(_extension_path)
     return jsonify({
         "connected": _extension_connected,
         "path": _extension_path,
+        "folder_exists": ext_dir.is_dir(),
+        "has_manifest": (ext_dir / "manifest.json").exists() if ext_dir.is_dir() else False,
     })
 
 
 @app.route("/api/extension/reveal", methods=["POST"])
 def api_extension_reveal():
     """Open the extension folder in Finder so the user can drag it into Chrome."""
+    ext_dir = Path(_extension_path)
+    if not ext_dir.exists():
+        return jsonify({"ok": False, "error": f"Extension folder not found at {_extension_path}"}), 404
+    if not ext_dir.is_dir():
+        return jsonify({"ok": False, "error": f"{_extension_path} is not a directory"}), 400
+    if not (ext_dir / "manifest.json").exists():
+        return jsonify({"ok": False, "error": f"No manifest.json in {_extension_path} — extension may be incomplete"}), 400
     try:
         subprocess.run(["open", _extension_path], check=True, timeout=5)
         return jsonify({"ok": True})

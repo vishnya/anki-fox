@@ -2,6 +2,7 @@
 
 import json
 import pytest
+from pathlib import Path
 from unittest.mock import patch, MagicMock
 from dataclasses import dataclass
 
@@ -1133,6 +1134,26 @@ class TestYouTubeLifecycle:
         assert "path" in data
         assert "extension" in data["path"]
 
+    def test_extension_status_reports_folder_exists(self, flask_client):
+        """Status should report whether the extension folder and manifest actually exist."""
+        data = flask_client.get("/api/extension/status").get_json()
+        assert "folder_exists" in data
+        assert "has_manifest" in data
+        # The real extension folder should exist in the repo
+        assert data["folder_exists"] is True
+        assert data["has_manifest"] is True
+
+    def test_extension_status_missing_folder(self, flask_client):
+        """If extension folder is missing, status reports it."""
+        original = flask_server._extension_path
+        flask_server._extension_path = "/nonexistent/extension"
+        try:
+            data = flask_client.get("/api/extension/status").get_json()
+            assert data["folder_exists"] is False
+            assert data["has_manifest"] is False
+        finally:
+            flask_server._extension_path = original
+
     def test_extension_reveal_endpoint(self, flask_client):
         """Reveal endpoint should call subprocess to open the folder."""
         with patch("flask_server.subprocess.run") as mock_run:
@@ -1143,6 +1164,77 @@ class TestYouTubeLifecycle:
             args = mock_run.call_args[0][0]
             assert args[0] == "open"
             assert "extension" in args[1]
+
+    def test_extension_reveal_missing_folder_returns_404(self, flask_client):
+        """If extension folder doesn't exist, reveal returns 404 with useful message."""
+        original = flask_server._extension_path
+        flask_server._extension_path = "/nonexistent/extension"
+        try:
+            resp = flask_client.post("/api/extension/reveal")
+            assert resp.status_code == 404
+            data = resp.get_json()
+            assert data["ok"] is False
+            assert "not found" in data["error"].lower()
+        finally:
+            flask_server._extension_path = original
+
+    def test_extension_reveal_not_a_directory(self, flask_client, tmp_path):
+        """If path points to a file instead of a directory, reveal returns 400."""
+        fake_file = tmp_path / "extension"
+        fake_file.write_text("not a dir")
+        original = flask_server._extension_path
+        flask_server._extension_path = str(fake_file)
+        try:
+            resp = flask_client.post("/api/extension/reveal")
+            assert resp.status_code == 400
+            assert "not a directory" in resp.get_json()["error"]
+        finally:
+            flask_server._extension_path = original
+
+    def test_extension_reveal_missing_manifest(self, flask_client, tmp_path):
+        """If extension folder exists but has no manifest.json, reveal returns 400."""
+        ext_dir = tmp_path / "extension"
+        ext_dir.mkdir()
+        original = flask_server._extension_path
+        flask_server._extension_path = str(ext_dir)
+        try:
+            resp = flask_client.post("/api/extension/reveal")
+            assert resp.status_code == 400
+            assert "manifest.json" in resp.get_json()["error"]
+        finally:
+            flask_server._extension_path = original
+
+    def test_extension_reveal_subprocess_failure(self, flask_client):
+        """If subprocess.run fails (e.g., on Linux where 'open' doesn't exist), returns 500."""
+        with patch("flask_server.subprocess.run", side_effect=FileNotFoundError("open: not found")):
+            resp = flask_client.post("/api/extension/reveal")
+            assert resp.status_code == 500
+            assert resp.get_json()["ok"] is False
+
+    def test_extension_reveal_with_symlinked_server(self, flask_client, tmp_path):
+        """Extension path should resolve correctly even if flask_server.py is symlinked."""
+        # Simulate: _extension_path was computed from __file__ which might be a symlink.
+        # As long as the real extension/ folder exists at that path, it should work.
+        ext_dir = tmp_path / "extension"
+        ext_dir.mkdir()
+        (ext_dir / "manifest.json").write_text('{"name": "test"}')
+        original = flask_server._extension_path
+        flask_server._extension_path = str(ext_dir)
+        try:
+            with patch("flask_server.subprocess.run") as mock_run:
+                resp = flask_client.post("/api/extension/reveal")
+                assert resp.status_code == 200
+                assert resp.get_json()["ok"] is True
+                # Verify it opened the correct path
+                assert mock_run.call_args[0][0][1] == str(ext_dir)
+        finally:
+            flask_server._extension_path = original
+
+    def test_extension_path_resolves_from_server_file_location(self):
+        """_extension_path should be relative to flask_server.py, not cwd."""
+        server_dir = Path(flask_server.__file__).parent
+        expected = str(server_dir / "extension")
+        assert flask_server._extension_path == expected
 
 
 # ── Source cycling tests ──────────────────────────────────────────────────────
