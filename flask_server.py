@@ -1,4 +1,5 @@
 import json
+import logging
 import queue
 import re
 import threading
@@ -15,10 +16,32 @@ import config as cfg
 import models
 import youtube
 
+# ── Constants ────────────────────────────────────────────────────────────────────
 ANKICONNECT_URL = "http://localhost:8765"
 SCREENSHOTS_DIR = Path.home() / "AnkiFox" / "incoming"
 BASE_DIR        = Path(__file__).parent
 _QUEUE_FILE     = Path.home() / ".anki-fox" / "offline_queue.json"
+
+MAX_RECENT_CARDS = 20
+MAX_ACTIVITY_LOG = 20
+MAX_BATCHES = 10
+MAX_SSE_CONNECTIONS = 10
+POLL_INTERVAL_SECS = 2
+QUEUE_RETRY_SECS = 30
+QUEUE_TTL_SECS = 86400  # 24 hours
+ANKICONNECT_TIMEOUT = 5
+ANKICONNECT_RETRIES = 2
+
+# ── Logging ──────────────────────────────────────────────────────────────────────
+_REDACT_PATTERNS = (re.compile(r'sk-ant-[a-zA-Z0-9_-]+'), re.compile(r'sk-[a-zA-Z0-9_-]{20,}'), re.compile(r'gsk_[a-zA-Z0-9_-]+'), re.compile(r'AIza[a-zA-Z0-9_-]+'))
+
+def _redact(text: str) -> str:
+    for pat in _REDACT_PATTERNS:
+        text = pat.sub("[REDACTED]", text)
+    return text
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s", datefmt="%H:%M:%S")
+log = logging.getLogger("anki-fox")
 
 app = Flask(
     __name__,
@@ -136,14 +159,13 @@ def _is_network_error(exc: Exception) -> bool:
 def _enqueue_screenshot(path: str, conf: dict):
     """Add a screenshot to the offline queue for later processing."""
     deck = conf.get("deck", "")
-    # Snapshot only what's needed to process later
+    # Snapshot only what's needed to process later (never store API keys)
     entry = {
         "path": path,
         "ts": time.time(),
         "deck": deck,
         "conf": {
             "model": conf.get("model"),
-            "api_keys": conf.get("api_keys"),
             "custom_prompt": conf.get("custom_prompt", ""),
         },
     }
@@ -177,21 +199,27 @@ def _process_queue_inner():
     total_dupes = 0
 
     while True:
+        # Dequeue atomically to avoid TOCTOU race
         with _queue_lock:
             if not _offline_queue:
                 break
-            entry = _offline_queue[0]
+            entry = _offline_queue.pop(0)
+            _save_queue()
 
         path = entry["path"]
         deck = entry["deck"]
+        age = time.time() - entry.get("ts", 0)
+
+        # Skip expired entries
+        if age > QUEUE_TTL_SECS:
+            log.info("Skipping expired queue entry: %s (%.0fh old)", Path(path).name, age / 3600)
+            continue
+
+        # Reconstruct config from current settings (API keys from live config, not queue)
         conf = {**cfg.load(), **entry["conf"]}
         conf["deck_context"] = fetch_deck_cards(deck)
 
         if not Path(path).exists():
-            with _queue_lock:
-                if _offline_queue and _offline_queue[0] is entry:
-                    _offline_queue.pop(0)
-                    _save_queue()
             continue
 
         try:
@@ -207,10 +235,9 @@ def _process_queue_inner():
                         "deck": deck, "ts": time.time(),
                         "batch_id": batch_id, "note_id": card["note_id"],
                     })
-                del _recent_cards[20:]
+                del _recent_cards[MAX_RECENT_CARDS:]
                 _save_state()
 
-            # Push card data to UI (for recent cards list) but not an activity entry
             if added_cards:
                 _push_event({
                     "type": "done", "message": "",
@@ -221,15 +248,14 @@ def _process_queue_inner():
             total_added += result["added"]
             total_dupes += result["duplicates"]
 
-            with _queue_lock:
-                if _offline_queue and _offline_queue[0] is entry:
-                    _offline_queue.pop(0)
-                    _save_queue()
-
         except Exception as e:
             if _is_network_error(e):
+                # Re-enqueue at front for retry
+                with _queue_lock:
+                    _offline_queue.insert(0, entry)
+                    _save_queue()
                 return
-            _push_event({"type": "error", "message": f"Failed to process queued {Path(path).name}: {e}"})
+            _push_event({"type": "error", "message": _redact(f"Failed to process queued {Path(path).name}: {e}")})
             with _queue_lock:
                 if _offline_queue and _offline_queue[0] is entry:
                     _offline_queue.pop(0)
@@ -245,7 +271,7 @@ def _process_queue_inner():
 def _queue_worker():
     """Background thread: periodically retries queued screenshots."""
     while True:
-        time.sleep(30)
+        time.sleep(QUEUE_RETRY_SECS)
         with _queue_lock:
             if not _offline_queue:
                 continue
@@ -272,7 +298,7 @@ def _push_event(data: dict):
             entry["batch_id"] = data["batch_id"]
         with _activity_lock:
             _activity_log.insert(0, entry)
-            del _activity_log[20:]  # keep last 20
+            del _activity_log[MAX_ACTIVITY_LOG:]
             _save_state()
 
     with _sse_lock:
@@ -289,12 +315,22 @@ def _push_event(data: dict):
 # ── AnkiConnect helper ────────────────────────────────────────────────────────────
 def _ankiconnect(action: str, **params):
     import requests
-    payload  = json.dumps({"action": action, "version": 6, "params": params})
-    response = requests.post(ANKICONNECT_URL, data=payload, timeout=5)
-    result   = response.json()
-    if result.get("error"):
-        raise Exception(f"AnkiConnect error: {result['error']}")
-    return result["result"]
+    payload = json.dumps({"action": action, "version": 6, "params": params})
+    last_err = None
+    for attempt in range(ANKICONNECT_RETRIES + 1):
+        try:
+            response = requests.post(ANKICONNECT_URL, data=payload, timeout=ANKICONNECT_TIMEOUT)
+            result = response.json()
+            if result.get("error"):
+                raise Exception(f"AnkiConnect error: {result['error']}")
+            return result["result"]
+        except Exception as e:
+            last_err = e
+            if attempt < ANKICONNECT_RETRIES and _is_network_error(e):
+                time.sleep(1)
+                continue
+            raise
+    raise last_err
 
 
 def _strip_html_preserve_math(text: str) -> str:
@@ -418,7 +454,7 @@ class ScreenshotHandler(FileSystemEventHandler):
                         entry["yt_timestamp"] = timestamp
                         entry["video_id"] = conf.get("video_id", "")
                     _recent_cards.insert(0, entry)
-                del _recent_cards[20:]  # keep last 20
+                del _recent_cards[MAX_RECENT_CARDS:]
                 _save_state()
 
             msg = f"Added {result['added']} card(s) to '{deck}'"
@@ -483,7 +519,7 @@ def _add_cards_to_anki(cards: list[dict], image_path: str, deck: str) -> dict:
     with _batches_lock:
         _batches[batch_id] = note_ids
         # Keep only last 10 batches
-        while len(_batches) > 10:
+        while len(_batches) > MAX_BATCHES:
             oldest = next(iter(_batches))
             del _batches[oldest]
         _save_state()
@@ -804,10 +840,13 @@ def api_multi_finish():
     if not paths:
         return jsonify({"error": "No paths provided"}), 400
 
-    # Validate all paths exist
+    # Validate all paths exist and are within the screenshots directory
     images = []
     for p in paths:
-        if not Path(p).exists():
+        resolved = Path(p).resolve()
+        if not resolved.is_relative_to(SCREENSHOTS_DIR.resolve()):
+            return jsonify({"error": f"Path outside screenshots directory: {p}"}), 400
+        if not resolved.exists():
             return jsonify({"error": f"File not found: {p}"}), 400
         images.append(Image.open(p))
 
