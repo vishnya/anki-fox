@@ -6,9 +6,11 @@ Keep only the last 10 entries. Each entry: date, device, what was done.
 ---
 
 ### 2026-03-21 | Mac
-- Added claude-code provider (subscription-based): shells out to `claude` CLI, no API key needed, _find_claude_cli() with ~/.local/bin fallback for launchd PATH
-- Verified end-to-end: polling thread detects file, handler calls CLI, cards created in Anki
-- 339 tests passing (33 new for claude-code), pushed to GitHub
+- Added claude-code provider (subscription-based): shells out to `claude` CLI, no API key needed
+- Production hardening: path traversal fix, config input validation, API key redaction in logs, AnkiConnect retry, queue TTL (24h), TOCTOU race fix, /health endpoint, structured logging, named constants
+- Deleted deprecated anki_watcher.py, pinned dependencies
+- Improved activity messages for empty/cancelled screenshots
+- 339 tests passing (33 claude-code + 18 production), pushed to GitHub
 
 ### 2026-03-20 | Mac
 - Fixed multi-screenshot mode: screencapture rejects dot-prefixed filenames, renamed .multi_ to multi_; fixed race condition and key interference in Hammerspoon
