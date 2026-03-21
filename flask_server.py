@@ -697,6 +697,12 @@ def api_connectivity():
         "groq":      "https://api.groq.com",
         "gemini":    "https://generativelanguage.googleapis.com",
     }
+    if provider == "claude-code":
+        from models import _find_claude_cli
+        online = _find_claude_cli() is not None
+        with _queue_lock:
+            qc = len(_offline_queue)
+        return jsonify({"online": online, "queue_count": qc})
     url = urls.get(provider)
     if not url:
         return jsonify({"online": True, "queue_count": len(_offline_queue)})
