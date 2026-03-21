@@ -471,7 +471,7 @@ class ScreenshotHandler(FileSystemEventHandler):
             if _is_network_error(e):
                 _enqueue_screenshot(path, conf)
             else:
-                _push_event({"type": "error", "message": str(e)})
+                _push_event({"type": "error", "message": _redact(str(e))})
 
 
 def _add_cards_to_anki(cards: list[dict], image_path: str, deck: str) -> dict:
@@ -547,12 +547,23 @@ def api_config_get():
     return jsonify(cfg.load())
 
 
+_CONFIG_ALLOWED_KEYS = {"deck", "model", "api_keys", "custom_prompt", "deck_prompts", "deck_sources", "skip_delete_confirm"}
+_CONFIG_TYPE_CHECKS = {
+    "deck": str, "model": dict, "api_keys": dict, "custom_prompt": str,
+    "deck_prompts": dict, "deck_sources": dict, "skip_delete_confirm": bool,
+}
+
 @app.route("/api/config", methods=["POST"])
 def api_config_post():
     data = request.get_json(force=True)
+    if not isinstance(data, dict):
+        return jsonify({"error": "Expected JSON object"}), 400
     conf = cfg.load()
-    for key in ("deck", "model", "api_keys", "custom_prompt", "deck_prompts", "deck_sources", "skip_delete_confirm"):
+    for key in _CONFIG_ALLOWED_KEYS:
         if key in data:
+            expected = _CONFIG_TYPE_CHECKS.get(key)
+            if expected and not isinstance(data[key], expected):
+                return jsonify({"error": f"'{key}' must be {expected.__name__}"}), 400
             conf[key] = data[key]
     cfg.save(conf)
     return jsonify({"ok": True})
@@ -927,6 +938,25 @@ def api_events():
     )
 
 
+@app.route("/health")
+def health():
+    """Health check: verify server is alive and key dependencies are reachable."""
+    checks = {"server": True}
+    try:
+        _ankiconnect("version")
+        checks["anki"] = True
+    except Exception:
+        checks["anki"] = False
+    try:
+        cfg.load()
+        checks["config"] = True
+    except Exception:
+        checks["config"] = False
+    checks["screenshots_dir"] = SCREENSHOTS_DIR.exists()
+    ok = all(checks.values())
+    return jsonify({"status": "ok" if ok else "degraded", "checks": checks}), 200 if ok else 503
+
+
 # ── Startup ───────────────────────────────────────────────────────────────────────
 _seen_files: set[str] = set()
 
@@ -937,7 +967,7 @@ def _poll_screenshots():
     _seen_files = {p.name for p in SCREENSHOTS_DIR.glob("*.png")}
     while True:
         try:
-            time.sleep(2)
+            time.sleep(POLL_INTERVAL_SECS)
             current = {p.name for p in SCREENSHOTS_DIR.glob("*.png")}
             new_files = current - _seen_files
             _seen_files = current
@@ -946,7 +976,7 @@ def _poll_screenshots():
                 from watchdog.events import FileCreatedEvent
                 handler.on_created(FileCreatedEvent(fpath))
         except Exception as e:
-            print(f"Poll error: {e}", flush=True)
+            log.error("Poll error: %s", _redact(str(e)))
 
 
 def _start_watchdog():

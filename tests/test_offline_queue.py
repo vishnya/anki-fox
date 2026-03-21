@@ -1,4 +1,5 @@
 import json
+import time
 import pytest
 from unittest.mock import MagicMock, patch
 
@@ -167,7 +168,7 @@ class TestQueuePersistence:
     def test_save_and_load_queue(self, tmp_path, monkeypatch):
         monkeypatch.setattr(flask_server, "_QUEUE_FILE", tmp_path / "q.json")
         flask_server._offline_queue.clear()
-        flask_server._offline_queue.append({"path": "/tmp/a.png", "ts": 1.0, "deck": "D", "conf": {}})
+        flask_server._offline_queue.append({"path": "/tmp/a.png", "ts": time.time(), "deck": "D", "conf": {}})
         flask_server._save_queue()
 
         loaded = flask_server._load_queue()
@@ -185,12 +186,11 @@ class TestProcessQueue:
 
         flask_server._offline_queue.append({
             "path": tiny_png,
-            "ts": 1.0,
+            "ts": time.time(),
             "deck": "TestDeck",
             "conf": {
                 "model": conf["model"],
-                "api_keys": conf["api_keys"],
-                "custom_prompt": "",
+                                "custom_prompt": "",
             },
         })
 
@@ -222,7 +222,7 @@ class TestProcessQueue:
         conf = dict(tmp_config)
         flask_server._offline_queue.append({
             "path": "/nonexistent/deleted.png",
-            "ts": 1.0,
+            "ts": time.time(),
             "deck": "TestDeck",
             "conf": {"model": conf["model"], "api_keys": conf["api_keys"], "custom_prompt": ""},
         })
@@ -240,7 +240,7 @@ class TestProcessQueue:
         conf = dict(tmp_config)
         flask_server._offline_queue.append({
             "path": tiny_png,
-            "ts": 1.0,
+            "ts": time.time(),
             "deck": "TestDeck",
             "conf": {"model": conf["model"], "api_keys": conf["api_keys"], "custom_prompt": ""},
         })
@@ -259,7 +259,7 @@ class TestProcessQueue:
         conf = dict(tmp_config)
         flask_server._offline_queue.append({
             "path": tiny_png,
-            "ts": 1.0,
+            "ts": time.time(),
             "deck": "TestDeck",
             "conf": {"model": conf["model"], "api_keys": conf["api_keys"], "custom_prompt": ""},
         })
@@ -328,7 +328,7 @@ class TestDuplicateFiltering:
         conf["deck"] = "TestDeck"
 
         flask_server._offline_queue.append({
-            "path": tiny_png, "ts": 1.0, "deck": "TestDeck",
+            "path": tiny_png, "ts": time.time(), "deck": "TestDeck",
             "conf": {"model": conf["model"], "api_keys": conf["api_keys"], "custom_prompt": ""},
         })
 
@@ -375,7 +375,7 @@ class TestOfflineQueueRoute:
 
     def test_queue_with_items(self, flask_client):
         flask_server._offline_queue.append({
-            "path": "/tmp/a.png", "ts": 1.0, "deck": "Bio",
+            "path": "/tmp/a.png", "ts": time.time(), "deck": "Bio",
             "conf": {},
         })
         resp = flask_client.get("/api/offline-queue")
@@ -407,7 +407,7 @@ class TestConnectivityEndpoint:
         import requests as req
         conf = dict(tmp_config)
         flask_server._offline_queue.append({
-            "path": tiny_png, "ts": 1.0, "deck": "TestDeck",
+            "path": tiny_png, "ts": time.time(), "deck": "TestDeck",
             "conf": {"model": conf["model"], "api_keys": conf["api_keys"], "custom_prompt": ""},
         })
 
@@ -432,8 +432,8 @@ class TestConnectivityEndpoint:
     def test_offline_does_not_trigger_processing(self, flask_client, tmp_config, tiny_png):
         import requests as req
         flask_server._offline_queue.append({
-            "path": tiny_png, "ts": 1.0, "deck": "TestDeck",
-            "conf": {"model": {}, "api_keys": {}, "custom_prompt": ""},
+            "path": tiny_png, "ts": time.time(), "deck": "TestDeck",
+            "conf": {"model": {}, "custom_prompt": ""},
         })
 
         threads_started = []

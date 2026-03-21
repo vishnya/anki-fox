@@ -14,6 +14,11 @@ import flask_server
 class TestMultiFinishStitching:
     """Test POST /api/multi/finish stitching behavior."""
 
+    @pytest.fixture(autouse=True)
+    def _allow_tmp_path(self, tmp_path, monkeypatch):
+        """Point SCREENSHOTS_DIR to tmp_path so path validation passes."""
+        monkeypatch.setattr(flask_server, "SCREENSHOTS_DIR", tmp_path)
+
     def _make_image(self, tmp_path, name, width, height, color=(255, 0, 0)):
         p = str(tmp_path / name)
         Image.new("RGB", (width, height), color=color).save(p)
@@ -73,8 +78,8 @@ class TestMultiFinishStitching:
         out_dir = tmp_path / "incoming"
         out_dir.mkdir()
         monkeypatch.setattr(flask_server, "SCREENSHOTS_DIR", out_dir)
-        p1 = self._make_image(tmp_path, "multi_0.png", 100, 50)
-        p2 = self._make_image(tmp_path, "multi_1.png", 100, 50)
+        p1 = self._make_image(out_dir, "multi_0.png", 100, 50)
+        p2 = self._make_image(out_dir, "multi_1.png", 100, 50)
         resp = flask_client.post("/api/multi/finish", json={"paths": [p1, p2]})
         result_path = resp.get_json()["path"]
         assert str(out_dir) in result_path
@@ -130,9 +135,7 @@ class TestMultiStitchThenWatchdog:
     def test_stitched_file_triggers_card_generation(self, flask_client, tmp_path, monkeypatch, mock_ankiconnect):
         """After stitching, the output file should be a regular (non-dot) PNG
         that the watchdog would process."""
-        out_dir = tmp_path / "incoming"
-        out_dir.mkdir()
-        monkeypatch.setattr(flask_server, "SCREENSHOTS_DIR", out_dir)
+        monkeypatch.setattr(flask_server, "SCREENSHOTS_DIR", tmp_path)
 
         conf = cfg_mod.load()
         conf["session_active"] = True

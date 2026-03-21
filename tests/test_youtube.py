@@ -1060,6 +1060,10 @@ class TestSessionSourceField:
 class TestMultiFinishEndpoint:
     """Test POST /api/multi/finish."""
 
+    @pytest.fixture(autouse=True)
+    def _allow_tmp_path(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(flask_server, "SCREENSHOTS_DIR", tmp_path)
+
     def test_stitch_two_images(self, flask_client, tmp_path):
         from PIL import Image
         from pathlib import Path
