@@ -409,7 +409,13 @@ class ScreenshotHandler(FileSystemEventHandler):
         if source == "video":
             with _video_lock:
                 video = _loaded_video
-            if video and video.transcript:
+            if not video:
+                _push_event({"type": "error", "message": "Video mode active but no video loaded. Load a YouTube URL first."})
+                log.warning("Video mode but no video loaded — processing as screenshot")
+            elif not video.transcript:
+                _push_event({"type": "error", "message": f"No transcript available for '{video.title}'. Cards will be generated from the screenshot only."})
+                log.warning("Video loaded but transcript empty — processing as screenshot")
+            else:
                 ts = conf.get("deck_sources", {}).get(deck, {}).get("timestamp")
                 if ts is not None:
                     timestamp = float(ts)
@@ -430,11 +436,13 @@ class ScreenshotHandler(FileSystemEventHandler):
                 return
             _push_event({"type": "progress", "message": f"{len(cards)} card(s) generated, adding to Anki..."})
 
-            # Add timestamp tag to video-sourced cards
+            # Add timestamp tag and video metadata to video-sourced cards
             if timestamp is not None:
                 ts_tag = f"yt-{youtube.format_timestamp(timestamp).replace(':', '')}"
                 for card in cards:
                     card.setdefault("tags", []).append(ts_tag)
+                    card["video_id"] = conf.get("video_id", "")
+                    card["yt_timestamp"] = timestamp
 
             result = _add_cards_to_anki(cards, path, deck)
             batch_id = result["batch_id"]
@@ -496,6 +504,12 @@ def _add_cards_to_anki(cards: list[dict], image_path: str, deck: str) -> dict:
         back = card["back"]
         if has_image:
             back += f'<br><img src="{fname}">'
+        # Append YouTube link with timestamp for video-sourced cards
+        if card.get("video_id") and card.get("yt_timestamp") is not None:
+            t = int(card["yt_timestamp"])
+            yt_url = f'https://www.youtube.com/watch?v={card["video_id"]}&t={t}'
+            ts_str = youtube.format_timestamp(card["yt_timestamp"])
+            back += f'<br><br><a href="{yt_url}">YouTube @ {ts_str}</a>'
 
         note = {
             "deckName":  deck,

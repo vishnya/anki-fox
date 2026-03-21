@@ -832,6 +832,160 @@ class TestScreenshotHandlerVideoSource:
         assert "yt_timestamp" in card
         assert card["video_id"] == "vid456"
 
+    def test_video_source_adds_youtube_link_to_card_back(self, flask_client, tiny_png, mock_ankiconnect):
+        """Cards from video source get a YouTube link with timestamp on the back."""
+        import config as cfg
+
+        conf = cfg.load()
+        conf["session_active"] = True
+        conf["deck"] = "TestDeck"
+        conf["deck_sources"] = {"TestDeck": {"source": "video", "timestamp": 90.0}}
+        conf["api_keys"] = {"anthropic": "sk-test"}
+        cfg.save(conf)
+
+        flask_server._loaded_video = youtube.VideoMeta(
+            video_id="abc123xyz", title="T", duration=120.0,
+            transcript=[{"text": "content", "start": 80.0, "duration": 5.0}],
+        )
+
+        cards = [{"front": "Q?", "back": "A", "tags": [], "is_image_card": False}]
+
+        with patch("models.generate_cards", return_value=cards), \
+             patch("time.sleep"):
+            handler = flask_server.ScreenshotHandler()
+            event = MagicMock()
+            event.is_directory = False
+            event.src_path = tiny_png
+            handler.on_created(event)
+
+        add_calls = [c for c in mock_ankiconnect.call_args_list if c[0][0] == "addNote"]
+        assert len(add_calls) >= 1
+        back_field = add_calls[0][1]["note"]["fields"]["Back"]
+        assert "youtube.com/watch?v=abc123xyz&t=90" in back_field
+        assert "1:30" in back_field  # formatted timestamp
+
+    def test_video_mode_no_video_loaded_shows_error_and_still_generates(self, flask_client, tiny_png, mock_ankiconnect):
+        """Video mode with no video loaded: error in activity, cards still generated (from screenshot only), no YouTube link on back."""
+        import config as cfg
+
+        flask_server._activity_log.clear()
+        conf = cfg.load()
+        conf["session_active"] = True
+        conf["deck"] = "TestDeck"
+        conf["deck_sources"] = {"TestDeck": {"source": "video"}}
+        conf["api_keys"] = {"anthropic": "sk-test"}
+        cfg.save(conf)
+
+        flask_server._loaded_video = None
+
+        cards = [{"front": "Q?", "back": "A", "tags": [], "is_image_card": False}]
+
+        with patch("models.generate_cards", return_value=cards), \
+             patch("time.sleep"):
+            handler = flask_server.ScreenshotHandler()
+            event = MagicMock()
+            event.is_directory = False
+            event.src_path = tiny_png
+            handler.on_created(event)
+
+        # Error logged about no video loaded
+        error_events = [e for e in flask_server._activity_log if e.get("type") == "error" and "no video loaded" in e.get("message", "").lower()]
+        assert len(error_events) >= 1
+
+        # Cards still generated (from screenshot alone)
+        add_calls = [c for c in mock_ankiconnect.call_args_list if c[0][0] == "addNote"]
+        assert len(add_calls) >= 1
+
+        # No YouTube link on the back (no video context)
+        back_field = add_calls[0][1]["note"]["fields"]["Back"]
+        assert "youtube.com" not in back_field
+
+    def test_video_mode_empty_transcript_shows_error_and_still_generates(self, flask_client, tiny_png, mock_ankiconnect):
+        """Video mode with empty transcript: error in activity, cards still generated (from screenshot only), no YouTube link on back."""
+        import config as cfg
+
+        flask_server._activity_log.clear()
+        conf = cfg.load()
+        conf["session_active"] = True
+        conf["deck"] = "TestDeck"
+        conf["deck_sources"] = {"TestDeck": {"source": "video"}}
+        conf["api_keys"] = {"anthropic": "sk-test"}
+        cfg.save(conf)
+
+        flask_server._loaded_video = youtube.VideoMeta(
+            video_id="novid", title="No Captions", duration=60.0, transcript=[],
+        )
+
+        cards = [{"front": "Q?", "back": "A", "tags": [], "is_image_card": False}]
+
+        with patch("models.generate_cards", return_value=cards), \
+             patch("time.sleep"):
+            handler = flask_server.ScreenshotHandler()
+            event = MagicMock()
+            event.is_directory = False
+            event.src_path = tiny_png
+            handler.on_created(event)
+
+        # Error logged about no transcript
+        error_events = [e for e in flask_server._activity_log if e.get("type") == "error" and "no transcript" in e.get("message", "").lower()]
+        assert len(error_events) >= 1
+
+        # Cards still generated (from screenshot alone)
+        add_calls = [c for c in mock_ankiconnect.call_args_list if c[0][0] == "addNote"]
+        assert len(add_calls) >= 1
+
+        # No YouTube link on the back
+        back_field = add_calls[0][1]["note"]["fields"]["Back"]
+        assert "youtube.com" not in back_field
+
+    def test_video_mode_with_transcript_adds_link_and_no_errors(self, flask_client, tiny_png, mock_ankiconnect):
+        """Video mode with transcript: no errors in activity, YouTube link on card back, timestamp tag on card."""
+        import config as cfg
+
+        flask_server._activity_log.clear()
+        conf = cfg.load()
+        conf["session_active"] = True
+        conf["deck"] = "TestDeck"
+        conf["deck_sources"] = {"TestDeck": {"source": "video", "timestamp": 120.0}}
+        conf["api_keys"] = {"anthropic": "sk-test"}
+        cfg.save(conf)
+
+        flask_server._loaded_video = youtube.VideoMeta(
+            video_id="good_vid", title="Working Video", duration=300.0,
+            transcript=[{"text": "real content here", "start": 110.0, "duration": 5.0}],
+        )
+
+        cards = [{"front": "Q?", "back": "A", "tags": [], "is_image_card": False}]
+
+        with patch("models.generate_cards", return_value=cards), \
+             patch("time.sleep"):
+            handler = flask_server.ScreenshotHandler()
+            event = MagicMock()
+            event.is_directory = False
+            event.src_path = tiny_png
+            handler.on_created(event)
+
+        # No error events
+        error_events = [e for e in flask_server._activity_log if e.get("type") == "error"]
+        assert len(error_events) == 0, f"Unexpected errors: {error_events}"
+
+        # Cards generated with YouTube link on back
+        add_calls = [c for c in mock_ankiconnect.call_args_list if c[0][0] == "addNote"]
+        assert len(add_calls) >= 1
+        back_field = add_calls[0][1]["note"]["fields"]["Back"]
+        assert "youtube.com/watch?v=good_vid&t=120" in back_field
+        assert "2:00" in back_field  # formatted timestamp
+
+        # Timestamp tag present
+        tags = add_calls[0][1]["note"]["tags"]
+        assert any(t.startswith("yt-") for t in tags)
+
+        # Recent cards have video metadata
+        assert len(flask_server._recent_cards) > 0
+        recent = flask_server._recent_cards[0]
+        assert recent.get("video_id") == "good_vid"
+        assert recent.get("yt_timestamp") == 120.0
+
 
 # ── HTML UI element tests ─────────────────────────────────────────────────────
 
