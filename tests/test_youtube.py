@@ -458,6 +458,28 @@ class TestExtensionHello:
         assert flask_server._extension_connected is True
 
 
+class TestExtensionTimestamp:
+    """Test POST /api/extension/timestamp."""
+
+    def test_timestamp_stores_value(self, flask_client):
+        flask_server._extension_timestamp = None
+        resp = flask_client.post("/api/extension/timestamp",
+                                 json={"currentTime": 42.5, "videoId": "abc", "duration": 100})
+        assert resp.status_code == 200
+        assert flask_server._extension_timestamp == 42.5
+
+    def test_timestamp_marks_connected(self, flask_client):
+        flask_server._extension_connected = False
+        flask_client.post("/api/extension/timestamp", json={"currentTime": 10.0})
+        assert flask_server._extension_connected is True
+
+    def test_timestamp_missing_field(self, flask_client):
+        flask_server._extension_timestamp = None
+        resp = flask_client.post("/api/extension/timestamp", json={"videoId": "abc"})
+        assert resp.status_code == 200
+        assert flask_server._extension_timestamp is None
+
+
 class TestExtensionStatus:
     """Test GET /api/extension/status."""
 
@@ -840,7 +862,7 @@ class TestScreenshotHandlerVideoSource:
         conf = cfg.load()
         conf["session_active"] = True
         conf["deck"] = "TestDeck"
-        conf["deck_sources"] = {"TestDeck": {"source": "video", "timestamp": 90.0}}
+        conf["deck_sources"] = {"TestDeck": {"source": "video"}}
         conf["api_keys"] = {"anthropic": "sk-test"}
         cfg.save(conf)
 
@@ -848,6 +870,7 @@ class TestScreenshotHandlerVideoSource:
             video_id="abc123xyz", title="T", duration=120.0,
             transcript=[{"text": "content", "start": 80.0, "duration": 5.0}],
         )
+        flask_server._extension_timestamp = 90.0
 
         cards = [{"front": "Q?", "back": "A", "tags": [], "is_image_card": False}]
 
@@ -947,7 +970,7 @@ class TestScreenshotHandlerVideoSource:
         conf = cfg.load()
         conf["session_active"] = True
         conf["deck"] = "TestDeck"
-        conf["deck_sources"] = {"TestDeck": {"source": "video", "timestamp": 120.0}}
+        conf["deck_sources"] = {"TestDeck": {"source": "video"}}
         conf["api_keys"] = {"anthropic": "sk-test"}
         cfg.save(conf)
 
@@ -955,6 +978,7 @@ class TestScreenshotHandlerVideoSource:
             video_id="good_vid", title="Working Video", duration=300.0,
             transcript=[{"text": "real content here", "start": 110.0, "duration": 5.0}],
         )
+        flask_server._extension_timestamp = 120.0
 
         cards = [{"front": "Q?", "back": "A", "tags": [], "is_image_card": False}]
 
@@ -1064,25 +1088,24 @@ class TestExtensionFiles:
         assert len(data["content_scripts"]) > 0
         assert "*://*.youtube.com/*" in data["content_scripts"][0]["matches"]
 
-    def test_manifest_externally_connectable(self):
+    def test_manifest_no_extra_permissions(self):
         from pathlib import Path
         manifest = Path(__file__).parent.parent / "extension" / "manifest.json"
         data = json.loads(manifest.read_text())
-        origins = data["externally_connectable"]["origins"]
-        assert any("localhost:5789" in o for o in origins)
+        assert data.get("permissions", []) == []
 
     def test_content_js_exists(self):
         from pathlib import Path
         content = Path(__file__).parent.parent / "extension" / "content.js"
         assert content.exists()
 
-    def test_content_js_handles_messages(self):
+    def test_content_js_posts_timestamp(self):
         from pathlib import Path
         content = Path(__file__).parent.parent / "extension" / "content.js"
         js = content.read_text()
-        assert "onMessageExternal" in js
-        assert "anki-fox-get-timestamp" in js
+        assert "api/extension/timestamp" in js
         assert "currentTime" in js
+        assert "setInterval" in js
 
 
 # ── Integration: Load → Status → Clear lifecycle ─────────────────────────────

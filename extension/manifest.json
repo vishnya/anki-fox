@@ -3,15 +3,12 @@
   "name": "anki-fox YouTube Timestamp",
   "version": "1.0",
   "description": "Captures exact YouTube playback timestamps for anki-fox flashcard generation.",
-  "permissions": ["activeTab"],
+  "permissions": [],
   "content_scripts": [
     {
       "matches": ["*://*.youtube.com/*"],
       "js": ["content.js"]
     }
   ],
-  "externally_connectable": {
-    "origins": ["http://localhost:5789/*", "http://127.0.0.1:5789/*"]
-  },
   "icons": {}
 }

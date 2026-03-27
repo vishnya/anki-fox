@@ -284,6 +284,7 @@ _video_lock = threading.Lock()
 _loaded_video: youtube.VideoMeta | None = None
 _extension_connected = False
 _extension_path = str(Path(__file__).parent / "extension")
+_extension_timestamp: float | None = None  # latest playback position from Chrome extension
 
 
 def _push_event(data: dict):
@@ -417,12 +418,12 @@ class ScreenshotHandler(FileSystemEventHandler):
                 _push_event({"type": "error", "message": f"No transcript available for '{video.title}'. Cards will be generated from the screenshot only."})
                 log.warning("Video loaded but transcript empty — processing as screenshot")
             else:
-                ts = conf.get("deck_sources", {}).get(deck, {}).get("timestamp")
-                if ts is not None:
-                    timestamp = float(ts)
+                if _extension_timestamp is not None:
+                    timestamp = _extension_timestamp
                 else:
-                    # Use end of transcript as fallback (latest point)
+                    # No extension data — fall back to end of video
                     timestamp = video.duration
+                    log.warning("No extension timestamp — using video duration as fallback")
                 chunk = youtube.get_transcript_chunk(video.transcript, timestamp)
                 if chunk:
                     conf["transcript_context"] = chunk
@@ -837,6 +838,18 @@ def api_extension_status():
         "folder_exists": ext_dir.is_dir(),
         "has_manifest": (ext_dir / "manifest.json").exists() if ext_dir.is_dir() else False,
     })
+
+
+@app.route("/api/extension/timestamp", methods=["POST"])
+def api_extension_timestamp():
+    """Receive current playback position from the Chrome extension."""
+    global _extension_connected, _extension_timestamp
+    data = request.get_json(silent=True) or {}
+    t = data.get("currentTime")
+    if t is not None:
+        _extension_timestamp = float(t)
+        _extension_connected = True
+    return jsonify({"ok": True})
 
 
 @app.route("/api/extension/reveal", methods=["POST"])

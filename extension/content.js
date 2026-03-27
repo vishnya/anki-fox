@@ -1,24 +1,26 @@
 // anki-fox YouTube Timestamp Extension
-// Responds to messages from anki-fox web UI with the current video state.
+// Posts current playback position to the anki-fox server every 2 seconds.
 
-chrome.runtime.onMessageExternal.addListener((request, sender, sendResponse) => {
-  if (request.type !== "anki-fox-get-timestamp") return;
+const ANKI_FOX_URL = "http://localhost:5789/api/extension/timestamp";
+const POLL_MS = 2000;
 
+function postTimestamp() {
   const video = document.querySelector("video");
-  if (!video) {
-    sendResponse({ error: "No video found on this page" });
-    return;
-  }
+  if (!video) return;
 
-  // Extract video ID from URL
   const params = new URLSearchParams(window.location.search);
   const videoId = params.get("v") || "";
+  if (!videoId) return;
 
-  sendResponse({
-    videoId: videoId,
-    currentTime: video.currentTime,
-    duration: video.duration,
-    paused: video.paused,
-    title: document.title.replace(" - YouTube", ""),
-  });
-});
+  fetch(ANKI_FOX_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      videoId: videoId,
+      currentTime: video.currentTime,
+      duration: video.duration,
+    }),
+  }).catch(() => {}); // server may not be running
+}
+
+setInterval(postTimestamp, POLL_MS);
