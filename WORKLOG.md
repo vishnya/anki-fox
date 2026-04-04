@@ -5,6 +5,11 @@ Keep only the last 10 entries. Each entry: date, device, what was done.
 
 ---
 
+### 2026-04-04 | Mac
+- Added 4 missing ch3 cards: BLEU/ROUGE/F1 worked example, lexical metrics limitation, AI judge capabilities, Chatbot Arena/Elo
+- Quality audit of 64 ch3 cards: fixed 10 dense text blocks (added line breaks + bold terms), 2 jargon issues (tokenization, embeddings)
+- Exported ch3 cards to ~/Desktop/chip_ai_engineering_ch3.zip (65 cards, 5 images)
+
 ### 2026-03-26 | Mac
 - Fixed video timestamp bug: cards showed video duration (end) instead of current playback position
 - Chrome extension now POSTs currentTime to server every 2s (was waiting for a message never sent)
